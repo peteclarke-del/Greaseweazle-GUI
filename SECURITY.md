@@ -14,10 +14,12 @@ though the application is intended for a single local GNOME user.
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a suspected vulnerability. Contact the
-repository owner privately using the address on the maintainer's GitHub
-profile. Include the affected version or commit, host distribution, a minimal
-reproduction using media you may lawfully share, and sanitised logs.
+Do not open a public issue for a suspected vulnerability. Use GitHub's private
+[Report a vulnerability](https://github.com/peteclarke-del/GreaseWeaselGUI/security/advisories/new)
+workflow. If that workflow is unavailable, contact the repository owner
+privately using the address on the maintainer's GitHub profile. Include the
+affected version or commit, host distribution, a minimal reproduction using
+media you may lawfully share, and sanitised logs.
 
 You should receive an acknowledgement within five working days. Disclosure
 timing will be coordinated with the reporter. These are response targets, not
