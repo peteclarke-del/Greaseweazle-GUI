@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Greaseweazle
+Comment=Read and write floppy disk images
+Exec=greaseweazle-gui
+Icon=drive-removable-media
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=floppy;disk;image;Greaseweazle;
+StartupNotify=true

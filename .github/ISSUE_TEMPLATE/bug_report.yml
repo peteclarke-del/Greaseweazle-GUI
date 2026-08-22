@@ -1,0 +1,59 @@
+name: Bug report
+description: Report reproducible behaviour that differs from the documentation
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach copyrighted media, private images, paths, identifiers, or secrets. Follow SECURITY.md for vulnerabilities.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Linux distribution and GNOME version
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Greaseweazle, drive, and host-tool version
+  - type: input
+    id: media
+    attributes:
+      label: Disk family, format, and geometry
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction
+      description: Give the smallest exact sequence and describe any generated fixture.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result and sanitised logs
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and current documentation.
+          required: true
+        - label: This report contains no secrets or media I lack permission to share.
+          required: true
+        - label: This is not a privately reportable security vulnerability.
+          required: true

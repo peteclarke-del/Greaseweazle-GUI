@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a disk workflow or engineering improvement
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the workflow or limitation without assuming an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Formats, machines, and hardware
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome and safe failure behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Technical references or generated fixtures
+      description: Link authoritative documentation; do not upload copyrighted media.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and documentation.
+          required: true
+        - label: I identified any operation that could overwrite media or lose metadata.
+          required: true
