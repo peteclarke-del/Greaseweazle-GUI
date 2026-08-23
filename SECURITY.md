@@ -1,6 +1,6 @@
 # Security policy
 
-Greaseweazle GUI parses untrusted floppy images and can write to physical
+GreaseWeazleGUI parses untrusted floppy images and can write to physical
 media through an external hardware tool. Security reports are welcome even
 though the application is intended for a single local GNOME user.
 

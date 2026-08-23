@@ -1,10 +1,18 @@
-# Greaseweazle GUI
+# GreaseWeazleGUI
+
+## for linux
 
 A native GNOME application for reading, writing, and managing floppy-disk
 images with a Greaseweazle device.
 
 The current application:
 
+- uses a restrained main workspace with conventional **File**, **Disk**,
+  **Drive**, and **Help** menus instead of presenting every operation at once;
+- keeps progress, browsing, inspection, comparison, catalogue, diagnostics,
+  health reports, and completion results inside the main application window;
+- includes a comprehensive in-app user guide with real screenshots, detailed
+  workflows, preservation guidance, troubleshooting, and keyboard reference;
 - checks for the `gw` command and a connected Greaseweazle at startup;
 - continues in offline image mode when no device is available, while clearly
   disabling physical operations;
@@ -52,7 +60,7 @@ The current application:
 ## Reading a disk
 
 1. Start the application and select **Read disk** to browse, or
-   **Extract disk to image** to retain the complete image.
+   choose **Disk → Extract Disk to Image** to retain the complete image.
 2. Choose **Detect automatically**, or **Choose format** if the disk family or
    exact geometry is already known. The generic **Atari ST** choice detects its
    360/400/440/720/800/880 KB subtype automatically.
@@ -126,6 +134,15 @@ images by SHA-256. Nothing is uploaded or stored outside that folder.
 Choose drive A or B from the Device section. RPM measurement takes five samples;
 USB bandwidth testing does not access a disk. Head cleaning requires an explicit
 confirmation and must only be used with a proper cleaning disk.
+
+## In-app help
+
+Choose **Help → User Guide** or press **F1**. The guide opens inside the main
+window and covers every application operation, filesystem and format behaviour,
+capture profiles, track-health interpretation, selective retry, safety rules,
+diagnostics, and keyboard controls. Its screenshots are captured from real,
+deterministic application states by `tools/capture_help_screenshots.sh` and do
+not contain local user files.
 
 ## Requirements
 

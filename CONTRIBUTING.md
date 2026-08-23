@@ -1,4 +1,4 @@
-# Contributing to Greaseweazle GUI
+# Contributing to GreaseWeazleGUI
 
 This application handles media that may be irreplaceable. Changes must preserve
 source images, make destructive actions explicit, and fail safely.

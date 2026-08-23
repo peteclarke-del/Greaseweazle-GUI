@@ -20,3 +20,5 @@ package-dir = { "" = "src" }
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+greaseweazle_gui = ["help_images/*.png"]

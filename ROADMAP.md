@@ -59,6 +59,9 @@ reader is bounded against corrupt or hostile image metadata.
 
 ## 5. File browser
 
+- [Complete] Replace the overcrowded operation dashboard with a stable main
+  workspace and conventional File, Disk, Drive, and Help menus. Substantial
+  results and tools are presented in the window container rather than dialogs.
 - [Complete] Revisit the dual-pane layout, navigation model, selection behaviour, menus,
   shortcuts, drag-and-drop, and accessible labels as one focused milestone.
 - [In progress] Add conflict choices, partial-result reporting, and clear
