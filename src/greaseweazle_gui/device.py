@@ -21,6 +21,7 @@ class DeviceProbeResult:
     summary: str
     details: Mapping[str, str] = field(default_factory=dict)
     diagnostic: str = ""
+    host_tools_available: bool = True
 
     @property
     def model(self) -> str:
@@ -98,6 +99,7 @@ def detect_device(timeout: float = 8.0) -> DeviceProbeResult:
         return DeviceProbeResult(
             False,
             "The Greaseweazle host tool (‘gw’) is not installed or is not on PATH.",
+            host_tools_available=False,
         )
 
     try:
@@ -117,6 +119,7 @@ def detect_device(timeout: float = 8.0) -> DeviceProbeResult:
         return DeviceProbeResult(
             False,
             f"The Greaseweazle host tool could not be started: {error}",
+            host_tools_available=False,
         )
 
     output = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
@@ -128,4 +131,3 @@ def detect_device(timeout: float = 8.0) -> DeviceProbeResult:
         )
 
     return parse_info_output(output)
-

@@ -12,6 +12,7 @@ import threading
 from collections.abc import Callable
 
 from .disk_formats import DiskFormat
+from .operation import OperationController
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +20,7 @@ class ReadResult:
     succeeded: bool
     summary: str
     diagnostic: str = ""
+    progress: tuple[ReadProgress, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +84,11 @@ def read_disk(
     timeout: float = 900,
     progress: Callable[[ReadProgress], None] | None = None,
     tracks: str | None = None,
+    controller: OperationController | None = None,
+    revolutions: int | None = None,
+    retries: int | None = None,
+    seek_retries: int | None = None,
+    drive: str | None = None,
 ) -> ReadResult:
     """Read a physical disk into *destination* using ``gw read``."""
     executable = shutil.which("gw")
@@ -92,8 +99,16 @@ def read_disk(
     environment["PYTHONUNBUFFERED"] = "1"
     try:
         command = [executable, "read"]
+        if drive is not None:
+            command.extend(["--drive", drive])
         if disk_format.gw_format:
             command.extend(["--format", disk_format.gw_format])
+        if revolutions is not None:
+            command.extend(["--revs", str(revolutions)])
+        if retries is not None:
+            command.extend(["--retries", str(retries)])
+        if seek_retries is not None:
+            command.extend(["--seek-retries", str(seek_retries)])
         if tracks is not None:
             command.extend(["--tracks", tracks])
         elif not disk_format.gw_format:
@@ -109,6 +124,8 @@ def read_disk(
         )
     except OSError as error:
         return ReadResult(False, f"The Greaseweazle tool could not be started: {error}")
+    if controller is not None:
+        controller.register(process)
 
     timed_out = threading.Event()
 
@@ -121,23 +138,43 @@ def read_disk(
     timer.daemon = True
     timer.start()
     output_lines: list[str] = []
+    progress_updates: list[ReadProgress] = []
     try:
         if process.stdout is not None:
             for raw_line in process.stdout:
                 line = raw_line.rstrip("\r\n")
                 output_lines.append(line)
                 update = parse_progress_line(line, disk_format)
-                if update is not None and progress is not None:
-                    progress(update)
+                if update is not None:
+                    progress_updates.append(update)
+                    if progress is not None:
+                        progress(update)
         return_code = process.wait()
     finally:
         timer.cancel()
+        if controller is not None:
+            controller.unregister(process)
 
     output = "\n".join(output_lines).strip()
+    if controller is not None and controller.cancelled:
+        return ReadResult(
+            False, "Reading was cancelled safely.", output, tuple(progress_updates)
+        )
     if timed_out.is_set():
-        return ReadResult(False, "Reading the disk timed out.", output)
+        return ReadResult(
+            False, "Reading the disk timed out.", output, tuple(progress_updates)
+        )
     if return_code != 0:
-        return ReadResult(False, "The disk could not be read.", output)
+        return ReadResult(
+            False, "The disk could not be read.", output, tuple(progress_updates)
+        )
     if not destination.is_file():
-        return ReadResult(False, "Greaseweazle finished without creating an image.", output)
-    return ReadResult(True, "Disk read successfully.", output)
+        return ReadResult(
+            False,
+            "Greaseweazle finished without creating an image.",
+            output,
+            tuple(progress_updates),
+        )
+    return ReadResult(
+        True, "Disk read successfully.", output, tuple(progress_updates)
+    )

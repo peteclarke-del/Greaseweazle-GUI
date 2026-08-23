@@ -5,10 +5,15 @@
   <summary>Read and write floppy disk images</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
+  <developer id="github.com.peteclarke-del">
+    <name>Pete Clarke</name>
+  </developer>
+  <url type="homepage">https://github.com/peteclarke-del/GreaseWeaselGUI</url>
   <description>
     <p>
-      A native GNOME interface for reading, writing, and creating floppy disk
-      images with Greaseweazle hardware.
+      A native GNOME interface for reading, writing, creating, and browsing
+      floppy disk images, with offline filesystem browsing, preservation
+      reports, image inspection and conversion, and Greaseweazle drive tools.
     </p>
   </description>
   <launchable type="desktop-id">com.github.pclarke.GreaseweazleGUI.desktop</launchable>

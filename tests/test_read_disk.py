@@ -24,6 +24,32 @@ def fake_process(lines: list[str], return_code: int = 0) -> Mock:
 class ReadDiskTests(unittest.TestCase):
     @patch("greaseweazle_gui.read_disk.subprocess.Popen")
     @patch("greaseweazle_gui.read_disk.shutil.which", return_value="/usr/bin/gw")
+    def test_preservation_profile_options_reach_gw(
+        self, _which: object, popen: Mock
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "disk.adf"
+            destination.write_bytes(b"image")
+            popen.return_value = fake_process([])
+
+            result = read_disk(
+                DISK_FORMATS[0],
+                destination,
+                revolutions=3,
+                retries=8,
+                seek_retries=2,
+            )
+
+        self.assertTrue(result.succeeded)
+        command = popen.call_args.args[0]
+        self.assertEqual(
+            command[command.index("--revs") + 1], "3"
+        )
+        self.assertEqual(command[command.index("--retries") + 1], "8")
+        self.assertEqual(command[command.index("--seek-retries") + 1], "2")
+
+    @patch("greaseweazle_gui.read_disk.subprocess.Popen")
+    @patch("greaseweazle_gui.read_disk.shutil.which", return_value="/usr/bin/gw")
     def test_probe_can_limit_the_physical_tracks(
         self, _which: object, popen: object
     ) -> None:

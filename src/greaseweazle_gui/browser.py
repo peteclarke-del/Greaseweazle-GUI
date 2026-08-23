@@ -16,6 +16,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from .filesystems import DiskContents, FilesystemError, ImageEntry, materialize_entries
 from .local_pane import LocalFilePane
+from .track_health import TrackCondition, TrackHealthReport
 
 
 class DiskBrowser(Gtk.Box):
@@ -26,17 +27,25 @@ class DiskBrowser(Gtk.Box):
         contents: DiskContents,
         cache_root: Path,
         on_done: Callable[[], None] | None = None,
+        health_report: TrackHealthReport | None = None,
+        on_retry_damaged: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.contents = contents
         self.cache_root = cache_root
         self.cache_root.mkdir(parents=True, exist_ok=True)
         self._on_done = on_done
+        self._health_report = health_report
+        self._on_retry_damaged = on_retry_damaged
         self._active_pane = "disk"
         self._clipboard_paths: list[Path] = []
         self._clipboard_cut = False
+        self._file_operation_busy = False
         self._dual_pane = True
         self._disk_writable = False
+        self._sort_key = "name"
+        self._sort_reverse = False
+        self._show_hidden = False
         self._directory_stack: list[tuple[str, tuple[ImageEntry, ...]]] = [
             ("", contents.entries)
         ]
@@ -65,6 +74,13 @@ class DiskBrowser(Gtk.Box):
         self._path_label = Gtk.Label(xalign=0, hexpand=True, ellipsize=3)
         self._path_label.add_css_class("heading")
         disk_header.append(self._path_label)
+        read_only = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        read_only.set_tooltip_text("The source image is never modified")
+        read_only.append(Gtk.Image.new_from_icon_name("changes-prevent-symbolic"))
+        read_only_label = Gtk.Label(label="Read only")
+        read_only_label.add_css_class("dim-label")
+        read_only.append(read_only_label)
+        disk_header.append(read_only)
 
         self._list = Gtk.ListBox(
             selection_mode=Gtk.SelectionMode.MULTIPLE,
@@ -145,9 +161,7 @@ class DiskBrowser(Gtk.Box):
         self._context_menu = Gtk.PopoverMenu.new_from_model(context_model)
         self._context_menu.set_parent(self._list)
         self._local.install_context_menu(context_model)
-        self.get_clipboard().connect(
-            "changed", lambda _clipboard: self._update_action_state()
-        )
+        self.get_clipboard().connect("changed", self._clipboard_changed)
 
         self._show_current_directory()
         self._update_action_state()
@@ -166,6 +180,10 @@ class DiskBrowser(Gtk.Box):
             "select-all": self._action_select_all,
             "refresh": self._action_refresh,
             "done": self._action_done,
+            "up": self._action_up,
+            "health": self._action_health,
+            "sort-name": self._action_sort_name,
+            "sort-size": self._action_sort_size,
         }
         self._actions: dict[str, Gio.SimpleAction] = {}
         for name, callback in callbacks.items():
@@ -179,6 +197,19 @@ class DiskBrowser(Gtk.Box):
         dual.connect("activate", self._action_dual_pane)
         group.add_action(dual)
         self._actions["dual-pane"] = dual
+        self._actions["health"].set_enabled(self._health_report is not None)
+        reverse = Gio.SimpleAction.new_stateful(
+            "reverse-sort", None, GLib.Variant("b", False)
+        )
+        reverse.connect("activate", self._action_reverse_sort)
+        group.add_action(reverse)
+        self._actions["reverse-sort"] = reverse
+        hidden = Gio.SimpleAction.new_stateful(
+            "show-hidden", None, GLib.Variant("b", False)
+        )
+        hidden.connect("activate", self._action_show_hidden)
+        group.add_action(hidden)
+        self._actions["show-hidden"] = hidden
         self.insert_action_group("manager", group)
 
         shortcuts = Gtk.ShortcutController()
@@ -192,6 +223,8 @@ class DiskBrowser(Gtk.Box):
             ("F2", "rename"),
             ("Delete", "trash"),
             ("F5", "refresh"),
+            ("BackSpace", "up"),
+            ("<Alt>Up", "up"),
         ):
             shortcuts.add_shortcut(
                 Gtk.Shortcut.new(
@@ -225,7 +258,18 @@ class DiskBrowser(Gtk.Box):
 
         view_menu = Gio.Menu()
         view_menu.append_item(self._menu_item("Dual Pane", "manager.dual-pane"))
+        sort_menu = Gio.Menu()
+        sort_menu.append_item(self._menu_item("Name", "manager.sort-name"))
+        sort_menu.append_item(self._menu_item("Size", "manager.sort-size"))
+        view_menu.append_submenu("Sort By", sort_menu)
+        view_menu.append_item(
+            self._menu_item("Reverse Order", "manager.reverse-sort")
+        )
+        view_menu.append_item(
+            self._menu_item("Show Hidden Files", "manager.show-hidden")
+        )
         view_menu.append_item(self._menu_item("Refresh", "manager.refresh"))
+        view_menu.append_item(self._menu_item("Disk Health", "manager.health"))
         root.append_submenu("View", view_menu)
         return Gtk.PopoverMenuBar.new_from_model(root)
 
@@ -262,6 +306,11 @@ class DiskBrowser(Gtk.Box):
             done = Gtk.Button(label="Done")
             done.set_action_name("manager.done")
             toolbar.append(done)
+        if self._health_report is not None:
+            health = Gtk.Button(label="Disk Health")
+            health.set_icon_name("emblem-ok-symbolic")
+            health.set_action_name("manager.health")
+            toolbar.append(health)
         return toolbar
 
     def _context_menu_model(self) -> Gio.MenuModel:
@@ -280,14 +329,11 @@ class DiskBrowser(Gtk.Box):
     def _set_active_pane(self, pane: str) -> None:
         self._active_pane = pane
         if pane == "disk":
-            self._status.set_text(
-                self._status.get_text().split(" • Active pane")[0] + " • Active pane"
-            )
-            self._local.status.remove_css_class("accent")
-            self._status.add_css_class("accent")
+            self._path_label.add_css_class("accent")
+            self._local.set_active(False)
         else:
-            self._status.remove_css_class("accent")
-            self._local.status.add_css_class("accent")
+            self._path_label.remove_css_class("accent")
+            self._local.set_active(True)
         self._update_action_state()
 
     def _disk_selection_changed(self, _list: Gtk.ListBox) -> None:
@@ -305,27 +351,41 @@ class DiskBrowser(Gtk.Box):
         self._actions["copy"].set_enabled(
             local_selected if local_active else disk_selected
         )
-        self._actions["cut"].set_enabled(local_active and local_selected)
-        self._actions["trash"].set_enabled(local_active and local_selected)
+        available = not self._file_operation_busy
+        self._actions["cut"].set_enabled(
+            available and local_active and local_selected
+        )
+        self._actions["trash"].set_enabled(
+            available and local_active and local_selected
+        )
         self._actions["rename"].set_enabled(
-            local_active and len(self._local.selected_paths()) == 1
+            available and local_active and len(self._local.selected_paths()) == 1
         )
         self._actions["properties"].set_enabled(
             local_selected if local_active else disk_selected
         )
         self._actions["paste"].set_enabled(
-            local_active
+            available
+            and local_active
             and (
                 bool(self._clipboard_paths)
                 or self.get_clipboard().get_formats().contain_gtype(Gdk.FileList)
             )
         )
-        self._actions["new-folder"].set_enabled(local_active)
+        self._actions["new-folder"].set_enabled(available and local_active)
         self._actions["done"].set_enabled(self._on_done is not None)
-        self._copy_to_local_button.set_sensitive(disk_selected)
+        self._copy_to_local_button.set_sensitive(available and disk_selected)
         self._copy_to_disk_button.set_sensitive(
-            self._disk_writable and local_selected
+            available and self._disk_writable and local_selected
         )
+
+    def _clipboard_changed(self, clipboard: Gdk.Clipboard) -> None:
+        # GTK emits this signal for changes made by other applications too.
+        # Do not let our private cut/copy state shadow newer Nautilus contents.
+        if not clipboard.is_local():
+            self._clipboard_paths.clear()
+            self._clipboard_cut = False
+        self._update_action_state()
 
     def _action_open(self, _action: Gio.SimpleAction, _parameter: object) -> None:
         if self._active_pane == "local":
@@ -349,7 +409,7 @@ class DiskBrowser(Gtk.Box):
         self._local.status.set_text(f"Cut {len(paths)} item(s) — choose Paste to move")
 
     def _action_paste(self, _action: Gio.SimpleAction, _parameter: object) -> None:
-        if self._active_pane != "local":
+        if self._active_pane != "local" or self._file_operation_busy:
             return
         if not self._clipboard_paths:
             self.get_clipboard().read_value_async(
@@ -362,12 +422,81 @@ class DiskBrowser(Gtk.Box):
         sources = list(self._clipboard_paths)
         cut = self._clipboard_cut
         destination = self._local.current_directory
+        conflicts = [
+            source for source in sources if (destination / source.name).exists()
+        ]
+        if conflicts:
+            self._ask_transfer_conflict(sources, cut, conflicts, destination)
+            return
+        self._start_paste(sources, cut, "keep-both", destination)
+
+    def _ask_transfer_conflict(
+        self,
+        sources: Sequence[Path],
+        cut: bool,
+        conflicts: Sequence[Path],
+        destination: Path,
+    ) -> None:
+        self._file_operation_busy = True
+        self._update_action_state()
+        root = self.get_root()
+        parent = root if isinstance(root, Gtk.Window) else None
+        noun = "item" if len(conflicts) == 1 else "items"
+        dialog = Adw.MessageDialog.new(
+            parent,
+            "Items already exist",
+            (
+                f"{len(conflicts)} {noun} with the same name already exist in "
+                f"{destination}."
+            ),
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("skip", "Skip existing")
+        dialog.add_response("keep-both", "Keep both")
+        dialog.add_response("replace", "Replace")
+        dialog.set_response_appearance(
+            "keep-both", Adw.ResponseAppearance.SUGGESTED
+        )
+        dialog.set_response_appearance(
+            "replace", Adw.ResponseAppearance.DESTRUCTIVE
+        )
+        dialog.set_default_response("keep-both")
+        dialog.set_close_response("cancel")
+
+        def respond(_dialog: Adw.MessageDialog, response: str) -> None:
+            if response in {"skip", "keep-both", "replace"}:
+                self._start_paste(sources, cut, response, destination)
+            else:
+                self._finish_file_operation("File transfer cancelled", False)
+
+        dialog.connect("response", respond)
+        dialog.present()
+
+    def _start_paste(
+        self,
+        sources: Sequence[Path],
+        cut: bool,
+        conflict_policy: str,
+        destination: Path,
+    ) -> None:
+        self._file_operation_busy = True
         self._local.status.set_text("Moving files…" if cut else "Copying files…")
+        self._update_action_state()
 
         def worker() -> None:
+            completed: list[Path] = []
+            skipped = 0
             try:
                 for source in sources:
-                    target = self._available_target(destination / source.name)
+                    requested_target = destination / source.name
+                    if requested_target.exists() and conflict_policy == "skip":
+                        skipped += 1
+                        continue
+                    target = (
+                        self._available_target(requested_target)
+                        if conflict_policy == "keep-both"
+                        else requested_target
+                    )
                     source_resolved = source.resolve()
                     destination_resolved = destination.resolve()
                     if source.is_dir() and (
@@ -375,21 +504,42 @@ class DiskBrowser(Gtk.Box):
                         or source_resolved in destination_resolved.parents
                     ):
                         raise OSError("A folder cannot be copied into itself.")
-                    if cut:
+                    if target.exists() and source_resolved == target.resolve():
+                        raise OSError("An item cannot replace itself.")
+                    if target.exists() and source.is_dir() and target.is_dir():
+                        shutil.copytree(source, target, dirs_exist_ok=True)
+                        if cut:
+                            shutil.rmtree(source)
+                    elif target.exists():
+                        if target.is_dir():
+                            shutil.rmtree(target)
+                        else:
+                            target.unlink()
+                        if cut:
+                            shutil.move(str(source), str(target))
+                        elif source.is_dir():
+                            shutil.copytree(source, target)
+                        else:
+                            shutil.copy2(source, target)
+                    elif cut:
                         shutil.move(str(source), str(target))
                     elif source.is_dir():
                         shutil.copytree(source, target)
                     else:
                         shutil.copy2(source, target)
+                    completed.append(source)
             except OSError as error:
-                GLib.idle_add(self._finish_file_operation, f"File operation failed: {error}", False)
+                GLib.idle_add(
+                    self._finish_paste,
+                    sources,
+                    completed,
+                    cut,
+                    skipped,
+                    str(error),
+                )
                 return
-            if cut:
-                self._clipboard_paths.clear()
-                self._clipboard_cut = False
-            verb = "Moved" if cut else "Copied"
             GLib.idle_add(
-                self._finish_file_operation, f"{verb} {len(sources)} item(s)", True
+                self._finish_paste, sources, completed, cut, skipped, None
             )
 
         threading.Thread(target=worker, name="file-manager-paste", daemon=True).start()
@@ -431,16 +581,22 @@ class DiskBrowser(Gtk.Box):
 
     def _action_trash(self, _action: Gio.SimpleAction, _parameter: object) -> None:
         paths = self._local.selected_paths()
-        if not paths:
+        if not paths or self._file_operation_busy:
             return
+        self._file_operation_busy = True
         self._local.status.set_text("Moving selection to Trash…")
+        self._update_action_state()
 
         def worker() -> None:
             try:
                 for path in paths:
                     Gio.File.new_for_path(str(path)).trash(None)
             except GLib.Error as error:
-                GLib.idle_add(self._finish_file_operation, f"Could not use Trash: {error.message}", False)
+                GLib.idle_add(
+                    self._finish_file_operation,
+                    f"Could not use Trash: {error.message}",
+                    True,
+                )
                 return
             GLib.idle_add(
                 self._finish_file_operation,
@@ -567,6 +723,99 @@ class DiskBrowser(Gtk.Box):
         else:
             self._show_current_directory()
 
+    def _action_up(self, _action: Gio.SimpleAction, _parameter: object) -> None:
+        if self._active_pane == "local":
+            self._local.go_up()
+        elif len(self._directory_stack) > 1:
+            self._directory_stack.pop()
+            self._show_current_directory()
+
+    def _action_health(self, _action: Gio.SimpleAction, _parameter: object) -> None:
+        report = self._health_report
+        if report is None:
+            return
+        root = self.get_root()
+        parent = root if isinstance(root, Gtk.Window) else None
+        dialog = Adw.MessageDialog.new(parent, "Disk health", report.summary)
+        grid = Gtk.Grid(column_spacing=14, row_spacing=4, margin_top=8)
+        grid.attach(Gtk.Label(label="Cylinder", css_classes=["heading"]), 0, 0, 1, 1)
+        heads = sorted({track.head for track in report.tracks})
+        for column, head in enumerate(heads, start=1):
+            grid.attach(
+                Gtk.Label(label=f"Head {head}", css_classes=["heading"]),
+                column,
+                0,
+                1,
+                1,
+            )
+        by_track = {(track.cylinder, track.head): track for track in report.tracks}
+        cylinders = sorted({track.cylinder for track in report.tracks})
+        for row, cylinder in enumerate(cylinders, start=1):
+            grid.attach(Gtk.Label(label=str(cylinder), xalign=1), 0, row, 1, 1)
+            for column, head in enumerate(heads, start=1):
+                track = by_track.get((cylinder, head))
+                if track is None:
+                    label, css = "—", "dim-label"
+                elif track.condition is TrackCondition.GOOD:
+                    label, css = "●", "success"
+                elif track.condition is TrackCondition.RECOVERED:
+                    label, css = "●", "warning"
+                else:
+                    label, css = "●", "error"
+                marker = Gtk.Label(label=label, css_classes=[css])
+                if track is not None:
+                    marker.set_tooltip_text(track.message)
+                grid.attach(marker, column, row, 1, 1)
+        scroller = Gtk.ScrolledWindow(min_content_height=320, max_content_height=420)
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_child(grid)
+        dialog.set_extra_child(scroller)
+        dialog.add_response("close", "Close")
+        if report.damaged_count and self._on_retry_damaged is not None:
+            dialog.add_response("retry", "Retry damaged tracks")
+            dialog.set_response_appearance(
+                "retry", Adw.ResponseAppearance.SUGGESTED
+            )
+            dialog.connect(
+                "response",
+                lambda _dialog, response: self._on_retry_damaged()
+                if response == "retry"
+                else None,
+            )
+        dialog.present()
+
+    def _action_sort_name(
+        self, _action: Gio.SimpleAction, _parameter: object
+    ) -> None:
+        self._sort_key = "name"
+        self._refresh_view_options()
+
+    def _action_sort_size(
+        self, _action: Gio.SimpleAction, _parameter: object
+    ) -> None:
+        self._sort_key = "size"
+        self._refresh_view_options()
+
+    def _action_reverse_sort(
+        self, action: Gio.SimpleAction, _parameter: object
+    ) -> None:
+        self._sort_reverse = not action.get_state().get_boolean()
+        action.set_state(GLib.Variant("b", self._sort_reverse))
+        self._refresh_view_options()
+
+    def _action_show_hidden(
+        self, action: Gio.SimpleAction, _parameter: object
+    ) -> None:
+        self._show_hidden = not action.get_state().get_boolean()
+        action.set_state(GLib.Variant("b", self._show_hidden))
+        self._refresh_view_options()
+
+    def _refresh_view_options(self) -> None:
+        self._show_current_directory()
+        self._local.set_view_options(
+            self._sort_key, self._sort_reverse, self._show_hidden
+        )
+
     def _action_done(self, _action: Gio.SimpleAction, _parameter: object) -> None:
         if self._on_done is not None:
             self._on_done()
@@ -619,11 +868,40 @@ class DiskBrowser(Gtk.Box):
             counter += 1
 
     def _finish_file_operation(self, message: str, refresh: bool) -> bool:
+        self._file_operation_busy = False
         if refresh:
             self._local.refresh()
         self._local.status.set_text(message)
         self._update_action_state()
         return GLib.SOURCE_REMOVE
+
+    def _finish_paste(
+        self,
+        sources: Sequence[Path],
+        completed: Sequence[Path],
+        cut: bool,
+        skipped: int,
+        error: str | None,
+    ) -> bool:
+        if cut and completed:
+            completed_set = set(completed)
+            self._clipboard_paths = [
+                path for path in self._clipboard_paths if path not in completed_set
+            ]
+            if not self._clipboard_paths:
+                self._clipboard_cut = False
+
+        verb = "Moved" if cut else "Copied"
+        if error is None:
+            message = f"{verb} {len(sources)} item(s)"
+            if skipped:
+                message = f"{verb} {len(completed)} item(s); skipped {skipped}"
+        else:
+            message = (
+                f"{verb} {len(completed)} of {len(sources)} item(s), then failed: "
+                f"{error}"
+            )
+        return self._finish_file_operation(message, refresh=True)
 
     def do_unroot(self) -> None:
         self._context_menu.unparent()
@@ -635,10 +913,22 @@ class DiskBrowser(Gtk.Box):
         while row := self._list.get_row_at_index(0):
             self._list.remove(row)
 
-        entries = sorted(
-            self._directory_stack[-1][1],
-            key=lambda entry: (not entry.is_directory, entry.name.casefold()),
-        )
+        entries = [
+            entry
+            for entry in self._directory_stack[-1][1]
+            if self._show_hidden or not entry.name.startswith(".")
+        ]
+        if self._sort_key == "size":
+            entries.sort(
+                key=lambda entry: (entry.size, entry.name.casefold()),
+                reverse=self._sort_reverse,
+            )
+        else:
+            entries.sort(
+                key=lambda entry: entry.name.casefold(),
+                reverse=self._sort_reverse,
+            )
+        entries.sort(key=lambda entry: not entry.is_directory)
         for entry in entries:
             self._list.append(self._make_row(entry))
         if not entries:
@@ -653,7 +943,9 @@ class DiskBrowser(Gtk.Box):
             self._list.append(empty_row)
 
         parts = [name for name, _entries in self._directory_stack if name]
-        self._path_label.set_text("/" if not parts else f"/{'/'.join(parts)}")
+        volume = self.contents.volume_label or self.contents.format_label or "Disk image"
+        path = "/" if not parts else f"/{'/'.join(parts)}"
+        self._path_label.set_text(f"{volume}:{path}")
         self._up_button.set_sensitive(len(self._directory_stack) > 1)
         noun = "item" if len(entries) == 1 else "items"
         self._status.set_text(f"{len(entries)} {noun} • contents read directly from image")

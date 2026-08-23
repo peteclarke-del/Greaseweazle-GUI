@@ -101,6 +101,10 @@ def format_menu_label(format_name: str) -> str:
 def _image_suffix(format_name: str) -> str:
     if format_name.startswith("raw."):
         return ".scp"
+    if format_name == "epson.qx10.logo":
+        # This definition deliberately leaves several tracks unformatted.
+        # A flat IMG cannot represent that layout, while SCP can.
+        return ".scp"
     if format_name.startswith("amiga."):
         return ".adf"
     if format_name.startswith("atarist."):

@@ -35,14 +35,40 @@ class DiskContents:
     format_label: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class FilesystemReader:
+    """A bounded image reader registered by filename suffix."""
+
+    name: str
+    suffixes: tuple[str, ...]
+    opener: Callable[[bytes, str], DiskContents]
+
+
+def filesystem_readers() -> tuple[FilesystemReader, ...]:
+    """Return the installed read-only filesystem plugins."""
+    return (
+        FilesystemReader(
+            "Atari TOS FAT12", (".st",), lambda data, _suffix: _Fat12Image(data).open()
+        ),
+        FilesystemReader(
+            "AmigaDOS", (".adf",), lambda data, _suffix: _AmigaImage(data).open()
+        ),
+        FilesystemReader(
+            "Acorn DFS", (".ssd", ".dsd"), lambda data, suffix: _AcornDfsImage(data, suffix).open()
+        ),
+        FilesystemReader(
+            "Commodore DOS", (".d64",), lambda data, _suffix: _CommodoreD64Image(data).open()
+        ),
+    )
+
+
 def open_image(image_path: Path) -> DiskContents:
     """Read directory metadata without extracting file contents."""
     data = image_path.read_bytes()
     suffix = image_path.suffix.lower()
-    if suffix == ".st":
-        return _Fat12Image(data).open()
-    if suffix == ".adf":
-        return _AmigaImage(data).open()
+    for reader in filesystem_readers():
+        if suffix in reader.suffixes:
+            return reader.opener(data, suffix)
     raise FilesystemError(f"Browsing {suffix or 'this image format'} is not supported yet.")
 
 
@@ -85,6 +111,192 @@ def _unique_name(name: str, used: set[str]) -> str:
             used.add(alternative.casefold())
             return alternative
         counter += 1
+
+
+class _AcornDfsImage:
+    SECTOR_SIZE = 256
+    TRACK_SIZE = 10 * SECTOR_SIZE
+
+    def __init__(self, data: bytes, suffix: str) -> None:
+        if len(data) < self.TRACK_SIZE or len(data) % self.TRACK_SIZE:
+            raise FilesystemError("The Acorn DFS image has an invalid size.")
+        if suffix == ".dsd":
+            if len(data) % (self.TRACK_SIZE * 2):
+                raise FilesystemError("The double-sided DFS image is truncated.")
+            chunks = [
+                data[offset : offset + self.TRACK_SIZE]
+                for offset in range(0, len(data), self.TRACK_SIZE)
+            ]
+            self.sides = (b"".join(chunks[0::2]), b"".join(chunks[1::2]))
+        else:
+            self.sides = (data,)
+
+    def open(self) -> DiskContents:
+        opened = tuple(self._open_side(data, side) for side, data in enumerate(self.sides))
+        if len(opened) == 1:
+            return opened[0]
+        entries = tuple(
+            ImageEntry(
+                f"Side {side}", True, children=contents.entries
+            )
+            for side, contents in enumerate(opened)
+        )
+        labels = " / ".join(contents.volume_label for contents in opened)
+        return DiskContents(labels, entries, "Acorn DFS (double-sided)")
+
+    def _open_side(self, data: bytes, side: int) -> DiskContents:
+        catalogue_names = data[:256]
+        catalogue_meta = data[256:512]
+        file_bytes = catalogue_meta[5]
+        if file_bytes % 8 or file_bytes > 31 * 8:
+            raise FilesystemError(f"DFS side {side} has an invalid catalogue length.")
+        file_count = file_bytes // 8
+        declared_sectors = ((catalogue_meta[6] & 0x03) << 8) | catalogue_meta[7]
+        if not declared_sectors:
+            declared_sectors = len(data) // self.SECTOR_SIZE
+        if declared_sectors * self.SECTOR_SIZE > len(data):
+            raise FilesystemError(f"DFS side {side} declares sectors outside the image.")
+        title = (
+            catalogue_names[:8] + catalogue_meta[:4]
+        ).decode("latin-1", errors="replace").rstrip(" \0") or f"Acorn DFS side {side}"
+        result: list[ImageEntry] = []
+        used_names: set[str] = set()
+        used_ranges: list[tuple[int, int]] = []
+        for index in range(file_count):
+            offset = 8 + index * 8
+            raw_name = catalogue_names[offset : offset + 7]
+            directory = chr(catalogue_names[offset + 7] & 0x7F)
+            leaf = raw_name.decode("latin-1", errors="replace").rstrip(" \0")
+            if not leaf:
+                raise FilesystemError("The DFS catalogue contains an empty filename.")
+            name = leaf if directory == "$" else f"{directory}.{leaf}"
+            name = _unique_name(name, used_names)
+            meta = catalogue_meta[offset : offset + 8]
+            length = meta[4] | (meta[5] << 8) | ((meta[7] & 0x30) << 12)
+            start_sector = meta[6] | ((meta[7] & 0x03) << 8)
+            start = start_sector * self.SECTOR_SIZE
+            end = start + length
+            if start_sector < 2 or end > declared_sectors * self.SECTOR_SIZE:
+                raise FilesystemError(f"{name} points outside the DFS image.")
+            for previous_start, previous_end in used_ranges:
+                if length and max(start, previous_start) < min(end, previous_end):
+                    raise FilesystemError("DFS catalogue files overlap on disk.")
+            used_ranges.append((start, end))
+            result.append(
+                ImageEntry(
+                    name,
+                    False,
+                    size=length,
+                    _reader=lambda begin=start, finish=end, source=data: source[begin:finish],
+                )
+            )
+        return DiskContents(title, tuple(result), "Acorn DFS")
+
+
+class _CommodoreD64Image:
+    SECTORS_PER_TRACK = (
+        *(21 for _track in range(1, 18)),
+        *(19 for _track in range(18, 25)),
+        *(18 for _track in range(25, 31)),
+        *(17 for _track in range(31, 36)),
+    )
+
+    def __init__(self, data: bytes) -> None:
+        expected = sum(self.SECTORS_PER_TRACK) * 256
+        if len(data) not in {expected, expected + 683}:
+            raise FilesystemError("The Commodore 1541 image has an invalid size.")
+        self.data = data[:expected]
+
+    def _sector(self, track: int, sector: int) -> bytes:
+        if track < 1 or track > len(self.SECTORS_PER_TRACK):
+            raise FilesystemError("A Commodore file chain points to an invalid track.")
+        count = self.SECTORS_PER_TRACK[track - 1]
+        if sector < 0 or sector >= count:
+            raise FilesystemError("A Commodore file chain points to an invalid sector.")
+        offset = (sum(self.SECTORS_PER_TRACK[: track - 1]) + sector) * 256
+        return self.data[offset : offset + 256]
+
+    @staticmethod
+    def _petscii_name(raw: bytes) -> str:
+        raw = raw.rstrip(b"\xa0\0 ")
+        text = "".join(
+            chr(byte) if 32 <= byte < 127 else "_" for byte in raw
+        )
+        return _safe_name(text)
+
+    def open(self) -> DiskContents:
+        bam = self._sector(18, 0)
+        label = self._petscii_name(bam[0x90:0xA0]) or "Commodore disk"
+        entries: list[ImageEntry] = []
+        used_names: set[str] = set()
+        visited_directory: set[tuple[int, int]] = set()
+        track, sector = 18, 1
+        entry_count = 0
+        while track:
+            pointer = (track, sector)
+            if pointer in visited_directory:
+                raise FilesystemError("The Commodore directory contains a sector loop.")
+            visited_directory.add(pointer)
+            directory = self._sector(track, sector)
+            track, sector = directory[0], directory[1]
+            for slot in range(8):
+                offset = 2 + slot * 32
+                file_type = directory[offset] & 0x07
+                if file_type == 0:
+                    continue
+                first_track, first_sector = directory[offset + 1], directory[offset + 2]
+                name = _unique_name(
+                    self._petscii_name(directory[offset + 3 : offset + 19]),
+                    used_names,
+                )
+                size_blocks = directory[offset + 30] | (directory[offset + 31] << 8)
+                if size_blocks > sum(self.SECTORS_PER_TRACK):
+                    raise FilesystemError(f"{name} has an impossible block count.")
+
+                def read_file(
+                    start_track: int = first_track,
+                    start_sector: int = first_sector,
+                    filename: str = name,
+                ) -> bytes:
+                    chunks: list[bytes] = []
+                    seen: set[tuple[int, int]] = set()
+                    current_track, current_sector = start_track, start_sector
+                    while current_track:
+                        current = (current_track, current_sector)
+                        if current in seen:
+                            raise FilesystemError(f"{filename} contains a sector-chain loop.")
+                        seen.add(current)
+                        block = self._sector(current_track, current_sector)
+                        next_track, next_sector = block[0], block[1]
+                        if next_track:
+                            chunks.append(block[2:])
+                        else:
+                            used = max(0, min(next_sector - 1, 254))
+                            chunks.append(block[2 : 2 + used])
+                        current_track, current_sector = next_track, next_sector
+                    return b"".join(chunks)
+
+                exact_size = self._chain_length(first_track, first_sector, name)
+                entries.append(
+                    ImageEntry(name, False, size=exact_size, _reader=read_file)
+                )
+                entry_count += 1
+                if entry_count > 144:
+                    raise FilesystemError("The Commodore directory is unreasonably large.")
+        return DiskContents(label, tuple(entries), "Commodore 1541 DOS")
+
+    def _chain_length(self, track: int, sector: int, filename: str) -> int:
+        total = 0
+        seen: set[tuple[int, int]] = set()
+        while track:
+            current = (track, sector)
+            if current in seen:
+                raise FilesystemError(f"{filename} contains a sector-chain loop.")
+            seen.add(current)
+            block = self._sector(track, sector)
+            track, sector = block[0], block[1]
+            total += 254 if track else max(0, min(sector - 1, 254))
+        return total
 
 
 class _Fat12Image:

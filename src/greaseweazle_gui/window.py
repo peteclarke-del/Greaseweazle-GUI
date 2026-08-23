@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import tempfile
 import shutil
+from datetime import datetime
 from collections.abc import Callable
 from pathlib import Path
 
@@ -12,9 +13,20 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from .browser import DiskBrowser
+from .capture_profiles import CAPTURE_PROFILES
+from .capture_metadata import write_capture_report
+from .capture_compare import CaptureComparison, compare_captures
+from .catalogue import CatalogueEntry, scan_catalogue
+from .create_image import (
+    NON_CREATABLE_FORMATS,
+    CreateImageProgress,
+    CreateImageResult,
+    create_blank_image,
+)
+from .convert_image import ConvertImageResult, convert_image
 from .device import DeviceProbeResult, detect_device
 from .disk_formats import (
     AUTO_DETECT_FORMAT,
@@ -25,6 +37,7 @@ from .disk_formats import (
     DiskFormat,
 )
 from .filesystems import DiskContents, FilesystemError, open_image
+from .filesystem_formatters import filesystem_support_name
 from .format_catalog import (
     format_menu_label,
     grouped_formats,
@@ -38,7 +51,17 @@ from .format_detection import (
     probe_format,
 )
 from .image_detection import ImageFormatGuess, detect_image_format
+from .image_inspector import ImageInspection, inspect_image
+from .hardware_tools import HardwareToolResult, run_hardware_tool
+from .operation import OperationController
 from .read_disk import ReadProgress, ReadResult, read_disk
+from .retry_tracks import RetryTracksResult, retry_damaged_tracks
+from .track_health import (
+    TrackCondition,
+    TrackHealthReport,
+    build_track_health,
+    build_write_health,
+)
 from .write_disk import WriteProgress, WriteResult, write_disk
 
 
@@ -52,6 +75,19 @@ class MainWindow(Adw.ApplicationWindow):
         self.set_size_request(460, 400)
         self._temporary_directories: list[tempfile.TemporaryDirectory[str]] = []
         self._file_chooser: Gtk.FileChooserNative | None = None
+        self._device_required_buttons: list[Gtk.Button] = []
+        self._tools_required_buttons: list[Gtk.Button] = []
+        self._active_operation: OperationController | None = None
+        self._host_tools_available = False
+        self._diagnostic_log: list[str] = []
+        self._save_capture_report = True
+        self._device_model = "Unknown Greaseweazle"
+        self._device_port = "Unknown port"
+        self._device_connected = False
+        self._device_detection_active = False
+        self._initial_detection_complete = False
+        self._drive = "A"
+        self._capture_profile = CAPTURE_PROFILES[0]
 
         toolbar_view = Adw.ToolbarView()
         toolbar_view.add_top_bar(Adw.HeaderBar())
@@ -63,6 +99,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._stack.add_named(self._build_dashboard(), "dashboard")
         self._stack.add_named(self._build_reading_page(), "reading")
         self._stack.set_visible_child_name("checking")
+        GLib.timeout_add_seconds(5, self._poll_device)
 
     def _build_checking_page(self) -> Gtk.Widget:
         page = Adw.StatusPage()
@@ -100,8 +137,33 @@ class MainWindow(Adw.ApplicationWindow):
         self._progress_message = Gtk.Label(xalign=0, ellipsize=3)
         self._progress_message.add_css_class("dim-label")
         progress_box.append(self._progress_message)
+        self._cancel_operation_button = Gtk.Button(
+            label="Cancel operation", halign=Gtk.Align.CENTER, visible=False
+        )
+        self._cancel_operation_button.connect(
+            "clicked", self._cancel_current_operation
+        )
+        progress_box.append(self._cancel_operation_button)
         self._reading_page.set_child(progress_box)
         return self._reading_page
+
+    def _begin_cancellable_operation(self) -> OperationController:
+        controller = OperationController()
+        self._active_operation = controller
+        self._cancel_operation_button.set_visible(True)
+        self._cancel_operation_button.set_sensitive(True)
+        return controller
+
+    def _cancel_current_operation(self, _button: Gtk.Button) -> None:
+        if self._active_operation is None:
+            return
+        self._active_operation.cancel()
+        self._cancel_operation_button.set_sensitive(False)
+        self._progress_message.set_text("Cancelling safely…")
+
+    def _end_cancellable_operation(self) -> None:
+        self._active_operation = None
+        self._cancel_operation_button.set_visible(False)
 
     def _build_dashboard(self) -> Gtk.Widget:
         content = Gtk.Box(
@@ -113,51 +175,171 @@ class MainWindow(Adw.ApplicationWindow):
             margin_end=24,
         )
 
-        device_group = Adw.PreferencesGroup(
-            title="Device", description="The connected Greaseweazle is ready."
+        self._device_group = Adw.PreferencesGroup(
+            title="Device", description="Checking the Greaseweazle connection…"
         )
         self._device_row = Adw.ActionRow(title="Greaseweazle")
-        self._device_row.add_prefix(Gtk.Image.new_from_icon_name("drive-removable-media-symbolic"))
-        self._device_row.set_activatable(False)
-        device_group.add(self._device_row)
-        content.append(device_group)
-
-        operations_group = Adw.PreferencesGroup(
-            title="Disk operations",
-            description="Choose what you want to do with the disk in the drive.",
+        self._device_row.add_prefix(
+            Gtk.Image.new_from_icon_name("drive-harddisk-symbolic")
         )
-        operations_group.add(
+        self._device_row.set_activatable(False)
+        self._device_retry_button = Gtk.Button(
+            label="Retry", valign=Gtk.Align.CENTER, sensitive=False
+        )
+        self._device_retry_button.connect(
+            "clicked", lambda _button: self.begin_device_detection()
+        )
+        self._device_row.add_suffix(self._device_retry_button)
+        self._device_group.add(self._device_row)
+        drive_row = Adw.ActionRow(
+            title="Floppy drive",
+            subtitle="Select the physical drive connected to the Greaseweazle.",
+        )
+        drive_choice = Gtk.DropDown(
+            model=Gtk.StringList.new(["Drive A", "Drive B"]),
+            selected=0,
+            valign=Gtk.Align.CENTER,
+        )
+        drive_choice.connect(
+            "notify::selected",
+            lambda choice, _property: setattr(
+                self, "_drive", "B" if choice.get_selected() == 1 else "A"
+            ),
+        )
+        drive_row.add_suffix(drive_choice)
+        self._device_group.add(drive_row)
+        content.append(self._device_group)
+
+        image_group = Adw.PreferencesGroup(
+            title="Disk images",
+            description="Open or create images without accessing a physical drive.",
+        )
+        image_group.add(
+            self._operation_row(
+                "Open disk image",
+                "Browse files in an existing supported image.",
+                "document-open-symbolic",
+                self._choose_existing_image,
+                button_label="Open image",
+                suggested=True,
+            )
+        )
+        image_group.add(
+            self._operation_row(
+                "Image library",
+                "Catalogue a local folder and identify duplicate captures.",
+                "folder-documents-symbolic",
+                self._choose_catalogue_folder,
+                button_label="Choose folder",
+            )
+        )
+        image_group.add(
+            self._operation_row(
+                "Inspect or convert image",
+                "Show format, geometry, filesystem, integrity, and SHA-256.",
+                "document-properties-symbolic",
+                self._choose_inspection_image,
+                button_label="Inspect image",
+            )
+        )
+        image_group.add(
+            self._operation_row(
+                "Create blank image",
+                "Create blank media using any installed Greaseweazle format.",
+                "list-add-symbolic",
+                self._choose_blank_format,
+                button_label="Choose format",
+                requires_tools=True,
+            )
+        )
+        content.append(image_group)
+
+        support_group = Adw.PreferencesGroup(
+            title="Support",
+            description="Review or export diagnostics from this application session.",
+        )
+        support_group.add(
+            self._operation_row(
+                "Diagnostic log",
+                "Copy or save operation errors without exposing disk contents.",
+                "utilities-terminal-symbolic",
+                self._show_diagnostic_log,
+                button_label="View log",
+            )
+        )
+        content.append(support_group)
+
+        physical_group = Adw.PreferencesGroup(
+            title="Physical disk",
+            description="These operations require a connected Greaseweazle.",
+        )
+        physical_group.add(
             self._operation_row(
                 "Read disk",
                 "Automatically identify and browse the disk without saving an image.",
-                "folder-open-symbolic",
+                "document-open-symbolic",
                 lambda button: self._ask_read_format(button, save_image=False),
+                button_label="Browse",
+                requires_device=True,
             )
         )
-        operations_group.add(
+        physical_group.add(
             self._operation_row(
                 "Extract disk to image",
                 "Save the appropriate image format, or raw SCP for special disks.",
                 "document-save-symbolic",
                 lambda button: self._ask_read_format(button, save_image=True),
+                button_label="Save image",
+                requires_device=True,
             )
         )
-        operations_group.add(
+        physical_group.add(
             self._operation_row(
                 "Write disk",
                 "Write a supported disk image to a physical floppy disk.",
-                "document-send-symbolic",
+                "media-record-symbolic",
                 self._choose_write_image,
+                button_label="Choose image",
+                requires_device=True,
             )
         )
-        operations_group.add(
+        content.append(physical_group)
+
+        maintenance_group = Adw.PreferencesGroup(
+            title="Drive maintenance",
+            description="Non-destructive diagnostics and cleaning for the selected drive.",
+        )
+        maintenance_group.add(
             self._operation_row(
-                "Create blank image",
-                "Create a new formatted disk image.",
-                "document-new-symbolic",
+                "Measure spindle speed",
+                "Measure five revolutions and report drive RPM.",
+                "speedometer-symbolic",
+                lambda button: self._start_hardware_tool("rpm"),
+                button_label="Measure RPM",
+                requires_device=True,
             )
         )
-        content.append(operations_group)
+        maintenance_group.add(
+            self._operation_row(
+                "Test USB bandwidth",
+                "Check transfer bandwidth between the host and Greaseweazle.",
+                "network-wired-symbolic",
+                lambda button: self._start_hardware_tool("bandwidth"),
+                button_label="Run test",
+                requires_device=True,
+            )
+        )
+        maintenance_group.add(
+            self._operation_row(
+                "Clean drive heads",
+                "Run a zig-zag cleaning cycle using a cleaning disk only.",
+                "edit-clear-all-symbolic",
+                self._confirm_drive_clean,
+                button_label="Clean heads…",
+                requires_device=True,
+            )
+        )
+        content.append(maintenance_group)
 
         clamp = Adw.Clamp(maximum_size=620, tightening_threshold=500)
         clamp.set_child(content)
@@ -166,12 +348,448 @@ class MainWindow(Adw.ApplicationWindow):
         scroller.set_child(clamp)
         return scroller
 
-    @staticmethod
+    def _choose_catalogue_folder(self, _button: Gtk.Button) -> None:
+        chooser = Gtk.FileChooserNative.new(
+            "Choose image library folder",
+            self,
+            Gtk.FileChooserAction.SELECT_FOLDER,
+            "Catalogue",
+            "Cancel",
+        )
+        chooser.connect("response", self._on_catalogue_folder)
+        self._file_chooser = chooser
+        chooser.show()
+
+    def _on_catalogue_folder(
+        self, chooser: Gtk.FileChooserNative, response: int
+    ) -> None:
+        self._file_chooser = None
+        if response != Gtk.ResponseType.ACCEPT:
+            return
+        selected = chooser.get_file()
+        selected_path = selected.get_path() if selected is not None else None
+        if selected_path is None:
+            return
+        folder = Path(selected_path)
+        self._reading_page.set_title("Building image catalogue…")
+        self._reading_page.set_description("Images are inspected read-only; no database is uploaded.")
+        self._read_progress.set_text("")
+        self._progress_track.set_text(str(folder))
+        self._progress_sectors.set_text("Hashing and detecting image formats…")
+        self._progress_message.set_text("")
+        self._stack.set_visible_child_name("reading")
+
+        def worker() -> None:
+            try:
+                entries = scan_catalogue(folder)
+            except OSError as error:
+                GLib.idle_add(self._finish_catalogue_error, str(error))
+                return
+            GLib.idle_add(self._finish_catalogue, folder, entries)
+
+        threading.Thread(target=worker, name="image-catalogue", daemon=True).start()
+
+    def _finish_catalogue_error(self, diagnostic: str) -> bool:
+        self._stack.set_visible_child_name("dashboard")
+        self._show_error("Unable to build catalogue", "The folder could not be scanned.", diagnostic)
+        return GLib.SOURCE_REMOVE
+
+    def _finish_catalogue(
+        self, folder: Path, entries: tuple[CatalogueEntry, ...]
+    ) -> bool:
+        self._stack.set_visible_child_name("dashboard")
+        duplicates = sum(entry.duplicate_count > 1 for entry in entries)
+        dialog = Adw.MessageDialog.new(
+            self,
+            "Image library",
+            f"{len(entries)} image(s) in {folder.name}; {duplicates} duplicate file(s).",
+        )
+        listing = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE)
+        for entry in entries:
+            row = Adw.ActionRow(
+                title=entry.path.name,
+                subtitle=(
+                    f"{entry.format_label} • {entry.volume_label or entry.filesystem or 'unrecognised filesystem'}"
+                ),
+            )
+            if entry.duplicate_count > 1:
+                badge = Gtk.Label(label=f"{entry.duplicate_count} copies", css_classes=["warning"])
+                row.add_suffix(badge)
+            row.set_tooltip_text(f"{entry.path}\nSHA-256 {entry.sha256}")
+            listing.append(row)
+        scroller = Gtk.ScrolledWindow(min_content_height=360, max_content_height=520)
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_child(listing)
+        dialog.set_extra_child(scroller)
+        dialog.add_response("close", "Close")
+        dialog.present()
+        return GLib.SOURCE_REMOVE
+
+    def _confirm_drive_clean(self, _button: Gtk.Button) -> None:
+        dialog = Adw.MessageDialog.new(
+            self,
+            "Insert a cleaning disk",
+            "Do not run this operation with a data disk. Greaseweazle will move the heads across the selected drive three times.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("clean", "Start cleaning")
+        dialog.set_response_appearance("clean", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.connect(
+            "response",
+            lambda _dialog, response: self._start_hardware_tool("clean")
+            if response == "clean"
+            else None,
+        )
+        dialog.present()
+
+    def _start_hardware_tool(self, action: str) -> None:
+        labels = {
+            "rpm": ("Measuring drive speed…", "Keep a disk inserted while RPM is measured."),
+            "bandwidth": ("Testing USB bandwidth…", "No disk access is performed."),
+            "clean": ("Cleaning drive heads…", "Keep the cleaning disk inserted."),
+        }
+        title, description = labels[action]
+        self._reading_page.set_title(title)
+        self._reading_page.set_description(description)
+        self._read_progress.set_text("")
+        self._read_progress.pulse()
+        self._progress_track.set_text(f"Drive {self._drive}")
+        self._progress_sectors.set_text("Greaseweazle hardware utility")
+        self._progress_message.set_text("")
+        self._stack.set_visible_child_name("reading")
+        controller = self._begin_cancellable_operation()
+
+        def worker() -> None:
+            try:
+                result = run_hardware_tool(
+                    action, drive=self._drive, controller=controller
+                )
+            except Exception as error:
+                result = HardwareToolResult(
+                    False,
+                    "The hardware utility stopped unexpectedly.",
+                    f"{type(error).__name__}: {error}",
+                )
+            GLib.idle_add(self._finish_hardware_tool, result)
+
+        threading.Thread(target=worker, name=f"gw-{action}", daemon=True).start()
+
+    def _finish_hardware_tool(self, result: HardwareToolResult) -> bool:
+        self._end_cancellable_operation()
+        self._stack.set_visible_child_name("dashboard")
+        if not result.succeeded:
+            self._show_error("Hardware operation failed", result.summary, result.output)
+            return GLib.SOURCE_REMOVE
+        dialog = Adw.MessageDialog.new(self, result.summary, result.output or "Complete")
+        dialog.add_response("close", "Close")
+        dialog.present()
+        return GLib.SOURCE_REMOVE
+
+    def _choose_inspection_image(self, _button: Gtk.Button) -> None:
+        chooser = Gtk.FileChooserNative.new(
+            "Inspect disk image",
+            self,
+            Gtk.FileChooserAction.OPEN,
+            "Inspect",
+            "Cancel",
+        )
+        image_filter = Gtk.FileFilter()
+        image_filter.set_name("Disk images")
+        for pattern in (
+            "*.adf", "*.st", "*.scp", "*.a2r", "*.img", "*.ima",
+            "*.ssd", "*.dsd", "*.adm", "*.ads", "*.adl", "*.do",
+            "*.po", "*.d64", "*.d71", "*.d81", "*.d1m", "*.d2m",
+            "*.d4m", "*.sf7",
+        ):
+            image_filter.add_pattern(pattern)
+        chooser.add_filter(image_filter)
+        chooser.connect("response", self._on_inspection_image_selected)
+        self._file_chooser = chooser
+        chooser.show()
+
+    def _on_inspection_image_selected(
+        self, chooser: Gtk.FileChooserNative, response: int
+    ) -> None:
+        self._file_chooser = None
+        if response != Gtk.ResponseType.ACCEPT:
+            return
+        selected = chooser.get_file()
+        selected_path = selected.get_path() if selected is not None else None
+        if selected_path is None:
+            self._show_error("Choose a local image", "Inspection requires a local file.")
+            return
+        image_path = Path(selected_path)
+        self._reading_page.set_title("Inspecting disk image…")
+        self._reading_page.set_description("Reading metadata and calculating SHA-256.")
+        self._read_progress.set_fraction(0)
+        self._read_progress.set_text("")
+        self._progress_track.set_text(image_path.name)
+        self._progress_sectors.set_text("Validating image and filesystem…")
+        self._progress_message.set_text("")
+        self._stack.set_visible_child_name("reading")
+
+        def worker() -> None:
+            try:
+                inspection = inspect_image(image_path)
+            except OSError as error:
+                GLib.idle_add(
+                    self._finish_inspection_error, image_path, str(error)
+                )
+                return
+            GLib.idle_add(self._finish_inspection, inspection)
+
+        threading.Thread(target=worker, name="image-inspector", daemon=True).start()
+
+    def _finish_inspection_error(self, image_path: Path, diagnostic: str) -> bool:
+        self._stack.set_visible_child_name("dashboard")
+        self._show_error(
+            "Unable to inspect image", f"{image_path.name} could not be read.", diagnostic
+        )
+        return GLib.SOURCE_REMOVE
+
+    def _finish_inspection(self, inspection: ImageInspection) -> bool:
+        self._stack.set_visible_child_name("dashboard")
+        disk_format = inspection.guess.disk_format
+        geometry = (
+            f"{disk_format.cylinders} cylinders × {disk_format.heads} heads"
+            if disk_format is not None
+            else "Unknown"
+        )
+        rows = (
+            ("Format", disk_format.label if disk_format is not None else "Unknown"),
+            ("Detection", inspection.guess.explanation),
+            ("Geometry", geometry),
+            ("Size", f"{inspection.size:,} bytes"),
+            ("Filesystem", inspection.filesystem or "Not browseable"),
+            ("Volume", inspection.volume_label or "—"),
+            ("Integrity", inspection.integrity),
+            ("SHA-256", inspection.sha256),
+        )
+        grid = Gtk.Grid(column_spacing=12, row_spacing=8, margin_top=8)
+        for row, (label, value) in enumerate(rows):
+            grid.attach(Gtk.Label(label=label, xalign=1, css_classes=["heading"]), 0, row, 1, 1)
+            value_label = Gtk.Label(label=value, xalign=0, selectable=True, wrap=True)
+            value_label.set_max_width_chars(60)
+            grid.attach(value_label, 1, row, 1, 1)
+        dialog = Adw.MessageDialog.new(self, inspection.path.name, "Disk image details")
+        dialog.set_extra_child(grid)
+        dialog.add_response("close", "Close")
+        dialog.add_response("compare", "Compare…")
+        dialog.connect(
+            "response",
+            lambda _dialog, response: self._choose_comparison_image(inspection.path)
+            if response == "compare"
+            else None,
+        )
+        if self._host_tools_available:
+            dialog.add_response("convert", "Convert…")
+            dialog.set_response_appearance("convert", Adw.ResponseAppearance.SUGGESTED)
+            dialog.connect(
+                "response",
+                lambda _dialog, response: self._choose_conversion_format(inspection)
+                if response == "convert"
+                else None,
+            )
+        dialog.present()
+        return GLib.SOURCE_REMOVE
+
+    def _choose_comparison_image(self, first: Path) -> None:
+        chooser = Gtk.FileChooserNative.new(
+            "Compare with disk image",
+            self,
+            Gtk.FileChooserAction.OPEN,
+            "Compare",
+            "Cancel",
+        )
+        chooser.connect("response", self._on_comparison_image, first)
+        self._file_chooser = chooser
+        chooser.show()
+
+    def _on_comparison_image(
+        self, chooser: Gtk.FileChooserNative, response: int, first: Path
+    ) -> None:
+        self._file_chooser = None
+        if response != Gtk.ResponseType.ACCEPT:
+            return
+        selected = chooser.get_file()
+        selected_path = selected.get_path() if selected is not None else None
+        if selected_path is None:
+            return
+        second = Path(selected_path)
+        self._reading_page.set_title("Comparing captures…")
+        self._reading_page.set_description("Hashing both images and comparing track sides.")
+        self._progress_track.set_text(f"{first.name} ↔ {second.name}")
+        self._progress_sectors.set_text("The images are read-only")
+        self._progress_message.set_text("")
+        self._read_progress.set_text("")
+        self._stack.set_visible_child_name("reading")
+
+        def worker() -> None:
+            try:
+                comparison = compare_captures(first, second)
+            except OSError as error:
+                GLib.idle_add(self._finish_comparison_error, str(error))
+                return
+            GLib.idle_add(self._finish_comparison, comparison)
+
+        threading.Thread(target=worker, name="capture-comparer", daemon=True).start()
+
+    def _finish_comparison_error(self, diagnostic: str) -> bool:
+        self._stack.set_visible_child_name("dashboard")
+        self._show_error("Unable to compare captures", "An image could not be read.", diagnostic)
+        return GLib.SOURCE_REMOVE
+
+    def _finish_comparison(self, comparison: CaptureComparison) -> bool:
+        self._stack.set_visible_child_name("dashboard")
+        body = comparison.summary
+        if comparison.changed_tracks:
+            tracks = ", ".join(
+                f"{cylinder}.{head}" for cylinder, head in comparison.changed_tracks[:40]
+            )
+            if len(comparison.changed_tracks) > 40:
+                tracks += f", … and {len(comparison.changed_tracks) - 40} more"
+            body += f"\n\nChanged cylinder.head: {tracks}"
+        body += (
+            f"\n\nFirst SHA-256: {comparison.first_sha256}"
+            f"\nSecond SHA-256: {comparison.second_sha256}"
+        )
+        dialog = Adw.MessageDialog.new(self, "Capture comparison", body)
+        dialog.add_response("close", "Close")
+        dialog.present()
+        return GLib.SOURCE_REMOVE
+
+    def _choose_conversion_format(self, inspection: ImageInspection) -> None:
+        dialog = Adw.MessageDialog.new(
+            self,
+            "Choose destination format",
+            (
+                "The source image is never modified. Converting raw flux to a sector "
+                "image can discard protection, weak bits, and timing information."
+                if inspection.path.suffix.lower() in {".scp", ".a2r"}
+                else "The source image is never modified. Choose a compatible destination format."
+            ),
+        )
+        selected: list[str | None] = [None]
+        dialog.set_extra_child(
+            self._build_format_selector(
+                dialog,
+                selected,
+                response_id="continue",
+                excluded_formats=NON_CREATABLE_FORMATS,
+            )
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("continue", "Choose location")
+        dialog.set_response_enabled("continue", False)
+        dialog.set_response_appearance("continue", Adw.ResponseAppearance.SUGGESTED)
+
+        def respond(_dialog: Adw.MessageDialog, response: str) -> None:
+            if response != "continue" or selected[0] is None:
+                return
+            target = next(
+                item for item in supported_formats()
+                if item.gw_format == selected[0]
+            )
+            self._choose_conversion_location(inspection.path, target)
+
+        dialog.connect("response", respond)
+        dialog.present()
+
+    def _choose_conversion_location(
+        self, source: Path, target_format: DiskFormat
+    ) -> None:
+        chooser = Gtk.FileChooserNative.new(
+            "Save converted image",
+            self,
+            Gtk.FileChooserAction.SAVE,
+            "Convert",
+            "Cancel",
+        )
+        chooser.set_current_name(f"{source.stem}{target_format.suffix}")
+        chooser.connect("response", self._on_conversion_location, source, target_format)
+        self._file_chooser = chooser
+        chooser.show()
+
+    def _on_conversion_location(
+        self,
+        chooser: Gtk.FileChooserNative,
+        response: int,
+        source: Path,
+        target_format: DiskFormat,
+    ) -> None:
+        self._file_chooser = None
+        if response != Gtk.ResponseType.ACCEPT:
+            return
+        selected = chooser.get_file()
+        selected_path = selected.get_path() if selected is not None else None
+        if selected_path is None:
+            self._show_error("Choose a local folder", "Conversion requires a local path.")
+            return
+        destination = Path(selected_path)
+        if destination.suffix.lower() != target_format.suffix:
+            destination = destination.with_suffix(target_format.suffix)
+        self._start_conversion(source, destination, target_format)
+
+    def _start_conversion(
+        self, source: Path, destination: Path, target_format: DiskFormat
+    ) -> None:
+        self._reading_page.set_title(f"Converting to {target_format.label}…")
+        self._reading_page.set_description(f"Saving {destination.name}; the source is unchanged.")
+        self._read_progress.set_fraction(0)
+        self._read_progress.set_text("0%")
+        self._progress_track.set_text(f"Preparing {target_format.track_count} track sides…")
+        self._progress_sectors.set_text("Converting image")
+        self._progress_message.set_text("")
+        self._stack.set_visible_child_name("reading")
+        controller = self._begin_cancellable_operation()
+
+        def worker() -> None:
+            def progress(update: CreateImageProgress) -> None:
+                GLib.idle_add(self._update_blank_progress, update)
+
+            try:
+                result = convert_image(
+                    source,
+                    destination,
+                    target_format,
+                    progress=progress,
+                    controller=controller,
+                )
+            except Exception as error:
+                result = ConvertImageResult(
+                    False, "Image conversion stopped unexpectedly.",
+                    f"{type(error).__name__}: {error}",
+                )
+            GLib.idle_add(self._finish_conversion, result, destination)
+
+        threading.Thread(target=worker, name="image-converter", daemon=True).start()
+
+    def _finish_conversion(
+        self, result: ConvertImageResult, destination: Path
+    ) -> bool:
+        self._end_cancellable_operation()
+        self._stack.set_visible_child_name("dashboard")
+        if not result.succeeded:
+            self._show_error("Unable to convert image", result.summary, result.diagnostic)
+            return GLib.SOURCE_REMOVE
+        dialog = Adw.MessageDialog.new(
+            self, "Complete", f"The converted image was saved as {destination.name}."
+        )
+        dialog.add_response("close", "Close")
+        dialog.present()
+        return GLib.SOURCE_REMOVE
+
     def _operation_row(
+        self,
         title: str,
         subtitle: str,
         icon_name: str,
         callback: Callable[[Gtk.Button], None] | None = None,
+        *,
+        button_label: str | None = None,
+        suggested: bool = False,
+        requires_device: bool = False,
+        requires_tools: bool = False,
     ) -> Adw.ActionRow:
         row = Adw.ActionRow(title=title, subtitle=subtitle)
         row.add_prefix(Gtk.Image.new_from_icon_name(icon_name))
@@ -180,11 +798,124 @@ class MainWindow(Adw.ApplicationWindow):
             button.set_label("Coming soon")
             button.set_sensitive(False)
         else:
-            button.set_label(title)
-            button.add_css_class("suggested-action")
+            button.set_label(button_label or title)
+            if suggested:
+                button.add_css_class("suggested-action")
             button.connect("clicked", callback)
+            if requires_device:
+                button.set_sensitive(False)
+                self._device_required_buttons.append(button)
+            if requires_tools:
+                button.set_sensitive(False)
+                self._tools_required_buttons.append(button)
         row.add_suffix(button)
+        row.set_activatable_widget(button)
         return row
+
+    def _choose_existing_image(self, _button: Gtk.Button) -> None:
+        chooser = Gtk.FileChooserNative.new(
+            "Open disk image",
+            self,
+            Gtk.FileChooserAction.OPEN,
+            "Open image",
+            "Cancel",
+        )
+        image_filter = Gtk.FileFilter()
+        image_filter.set_name("Browseable disk images")
+        image_filter.add_pattern("*.adf")
+        image_filter.add_pattern("*.st")
+        image_filter.add_pattern("*.ssd")
+        image_filter.add_pattern("*.dsd")
+        image_filter.add_pattern("*.d64")
+        chooser.add_filter(image_filter)
+        all_files = Gtk.FileFilter()
+        all_files.set_name("All files")
+        all_files.add_pattern("*")
+        chooser.add_filter(all_files)
+        chooser.connect("response", self._on_existing_image_selected)
+        self._file_chooser = chooser
+        chooser.show()
+
+    def _on_existing_image_selected(
+        self, chooser: Gtk.FileChooserNative, response: int
+    ) -> None:
+        self._file_chooser = None
+        if response != Gtk.ResponseType.ACCEPT:
+            return
+        selected = chooser.get_file()
+        selected_path = selected.get_path() if selected is not None else None
+        if selected_path is None:
+            self._show_error(
+                "Choose a local image",
+                "The image browser needs a file on the local filesystem.",
+            )
+            return
+        image_path = Path(selected_path)
+        self._reading_page.set_title("Opening disk image…")
+        self._reading_page.set_description(
+            "Reading the directory without extracting file contents."
+        )
+        self._read_progress.set_fraction(0)
+        self._read_progress.set_text("")
+        self._progress_track.set_text(image_path.name)
+        self._progress_sectors.set_text("Examining image and filesystem…")
+        self._progress_message.set_text("")
+        self._stack.set_visible_child_name("reading")
+        temporary = tempfile.TemporaryDirectory(prefix="greaseweazle-open-image-")
+
+        def worker() -> None:
+            guess = detect_image_format(image_path)
+            try:
+                contents = open_image(image_path)
+            except (FilesystemError, OSError) as error:
+                GLib.idle_add(
+                    self._finish_existing_image_error,
+                    image_path,
+                    temporary,
+                    str(error),
+                    guess.explanation,
+                )
+                return
+            if guess.disk_format is not None:
+                contents = DiskContents(
+                    contents.volume_label,
+                    contents.entries,
+                    guess.disk_format.label,
+                )
+            result = ReadResult(True, "Image opened successfully.")
+            disk_format = guess.disk_format or DISK_FORMATS[0]
+            GLib.idle_add(
+                self._finish_read,
+                result,
+                temporary,
+                (
+                    contents,
+                    Path(temporary.name) / "files",
+                    image_path,
+                    disk_format,
+                    (),
+                ),
+            )
+
+        threading.Thread(
+            target=worker, name="existing-image-opener", daemon=True
+        ).start()
+
+    def _finish_existing_image_error(
+        self,
+        image_path: Path,
+        temporary: tempfile.TemporaryDirectory[str],
+        filesystem_error: str,
+        detection: str,
+    ) -> bool:
+        temporary.cleanup()
+        self._stack.set_visible_child_name("dashboard")
+        self._show_error(
+            "Unable to browse disk image",
+            f"{image_path.name} could not be opened as a supported filesystem.",
+            f"{filesystem_error}\n\nFormat detection: {detection}",
+        )
+        return GLib.SOURCE_REMOVE
 
     def _ask_read_format(self, button: Gtk.Button, *, save_image: bool) -> None:
         dialog = Adw.MessageDialog.new(
@@ -201,12 +932,55 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.set_response_appearance("detect", Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response("detect")
         dialog.set_close_response("cancel")
+        profile_box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=8
+        )
+        profile_box.append(Gtk.Label(label="Capture profile", xalign=0))
+        profile_names = Gtk.StringList.new(
+            [profile.name for profile in CAPTURE_PROFILES]
+        )
+        profile_choice = Gtk.DropDown(model=profile_names, selected=0)
+        profile_box.append(profile_choice)
+        profile_description = Gtk.Label(
+            label=CAPTURE_PROFILES[0].description,
+            xalign=0,
+            wrap=True,
+            css_classes=["dim-label"],
+        )
+        profile_box.append(profile_description)
+        capture_report = Gtk.CheckButton(
+            label="Save capture report (JSON) beside the image",
+            active=self._save_capture_report,
+            sensitive=save_image,
+        )
+        profile_box.append(capture_report)
+
+        def profile_changed(_choice: Gtk.DropDown, _property: object) -> None:
+            profile_description.set_text(
+                CAPTURE_PROFILES[profile_choice.get_selected()].description
+            )
+
+        profile_choice.connect("notify::selected", profile_changed)
+        dialog.set_extra_child(profile_box)
 
         def respond(_dialog: Adw.MessageDialog, response: str) -> None:
+            self._capture_profile = CAPTURE_PROFILES[
+                profile_choice.get_selected()
+            ]
+            self._save_capture_report = capture_report.get_active()
             if response == "choose":
                 self._choose_disk_format(button, save_image=save_image)
             elif response == "detect":
-                self._start_auto_read(button, save_image=save_image)
+                if self._capture_profile.preserve_raw:
+                    if save_image:
+                        self._choose_image_location(PRESERVATION_FORMAT)
+                    else:
+                        self._show_error(
+                            "Raw capture cannot be browsed directly",
+                            "Use “Extract disk to image” with the Protected software profile.",
+                        )
+                else:
+                    self._start_auto_read(button, save_image=save_image)
 
         dialog.connect("response", respond)
         dialog.present()
@@ -236,6 +1010,236 @@ class MainWindow(Adw.ApplicationWindow):
         chooser.connect("response", self._on_write_image_selected)
         self._file_chooser = chooser
         chooser.show()
+
+    def _choose_blank_format(self, _button: Gtk.Button) -> None:
+        dialog = Adw.MessageDialog.new(
+            self,
+            "Create blank disk image",
+            (
+                "Choose any format supported by the installed Greaseweazle. "
+                "The image will contain blank formatted sectors or bitcells, but "
+                "no filesystem; initialise it on the target computer before use."
+            ),
+        )
+        selected: list[str | None] = [None]
+        options = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        initialise = Gtk.CheckButton(label="Create a ready-to-use filesystem")
+        initialise.set_active(True)
+        initialise.set_sensitive(False)
+        filesystem_note = Gtk.Label(
+            label="Choose a format to see whether filesystem creation is available.",
+            xalign=0,
+            wrap=True,
+            css_classes=["dim-label"],
+        )
+        volume_label = Gtk.Entry(
+            placeholder_text="Volume label",
+            text="BLANK",
+            sensitive=False,
+        )
+
+        def format_selected(format_name: str) -> None:
+            disk_format = next(
+                item for item in supported_formats()
+                if item.gw_format == format_name
+            )
+            filesystem = filesystem_support_name(disk_format)
+            initialise.set_sensitive(filesystem is not None)
+            initialise.set_active(filesystem is not None)
+            volume_label.set_sensitive(filesystem is not None)
+            filesystem_note.set_text(
+                f"Creates {filesystem}; files can be added immediately."
+                if filesystem
+                else "Media layout only; initialise this format on its target system."
+            )
+
+        options.append(
+            self._build_format_selector(
+                dialog,
+                selected,
+                response_id="choose",
+                excluded_formats=NON_CREATABLE_FORMATS,
+                on_selected=format_selected,
+            )
+        )
+        options.append(initialise)
+        options.append(volume_label)
+        options.append(filesystem_note)
+        dialog.set_extra_child(options)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("choose", "Choose location")
+        dialog.set_response_enabled("choose", False)
+        dialog.set_response_appearance("choose", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("choose")
+        dialog.set_close_response("cancel")
+
+        def respond(_dialog: Adw.MessageDialog, response: str) -> None:
+            if response != "choose" or selected[0] is None:
+                return
+            disk_format = next(
+                (
+                    item
+                    for item in supported_formats()
+                    if item.gw_format == selected[0]
+                ),
+                None,
+            )
+            if disk_format is not None:
+                self._choose_blank_location(
+                    disk_format,
+                    initialise.get_active(),
+                    volume_label.get_text(),
+                )
+
+        dialog.connect("response", respond)
+        dialog.present()
+
+    def _choose_blank_location(
+        self, disk_format: DiskFormat, initialise: bool, volume_label: str
+    ) -> None:
+        chooser = Gtk.FileChooserNative.new(
+            "Save blank disk image",
+            self,
+            Gtk.FileChooserAction.SAVE,
+            "Create image",
+            "Cancel",
+        )
+        chooser.set_current_name(f"blank{disk_format.suffix}")
+        image_filter = Gtk.FileFilter()
+        image_filter.set_name(
+            f"{disk_format.label} image (*{disk_format.suffix})"
+        )
+        image_filter.add_pattern(f"*{disk_format.suffix}")
+        chooser.add_filter(image_filter)
+        chooser.connect(
+            "response",
+            self._on_blank_location,
+            disk_format,
+            initialise,
+            volume_label,
+        )
+        self._file_chooser = chooser
+        chooser.show()
+
+    def _on_blank_location(
+        self,
+        chooser: Gtk.FileChooserNative,
+        response: int,
+        disk_format: DiskFormat,
+        initialise: bool,
+        volume_label: str,
+    ) -> None:
+        self._file_chooser = None
+        if response != Gtk.ResponseType.ACCEPT:
+            return
+        selected = chooser.get_file()
+        selected_path = selected.get_path() if selected is not None else None
+        if selected_path is None:
+            self._show_error(
+                "Choose a local folder",
+                "Blank images must be created on the local filesystem.",
+            )
+            return
+        destination = Path(selected_path)
+        if destination.suffix.lower() != disk_format.suffix:
+            destination = destination.with_suffix(disk_format.suffix)
+        self._start_blank_creation(
+            destination, disk_format, initialise, volume_label
+        )
+
+    def _start_blank_creation(
+        self,
+        destination: Path,
+        disk_format: DiskFormat,
+        initialise: bool,
+        volume_label: str,
+    ) -> None:
+        self._reading_page.set_title(f"Creating {disk_format.label}…")
+        self._reading_page.set_description(
+            f"Building blank media as {destination.name}."
+        )
+        self._read_progress.set_fraction(0)
+        self._read_progress.set_text("0%")
+        self._progress_track.set_text(
+            f"Preparing {disk_format.track_count} track sides…"
+        )
+        self._progress_sectors.set_text(
+            f"{disk_format.cylinders} cylinders • {disk_format.heads} "
+            f"{'head' if disk_format.heads == 1 else 'heads'}"
+        )
+        self._progress_message.set_text("Starting Greaseweazle…")
+        self._stack.set_visible_child_name("reading")
+        controller = self._begin_cancellable_operation()
+
+        def worker() -> None:
+            def report(update: CreateImageProgress) -> None:
+                GLib.idle_add(self._update_blank_progress, update)
+
+            try:
+                result = create_blank_image(
+                    destination,
+                    disk_format,
+                    progress=report,
+                    controller=controller,
+                    initialise=initialise,
+                    volume_label=volume_label,
+                )
+            except Exception as error:
+                result = CreateImageResult(
+                    False,
+                    "Creating the image stopped because of an unexpected error.",
+                    f"{type(error).__name__}: {error}",
+                )
+            GLib.idle_add(
+                self._finish_blank_creation, result, destination, disk_format
+            )
+
+        threading.Thread(
+            target=worker, name="blank-image-creator", daemon=True
+        ).start()
+
+    def _update_blank_progress(self, update: CreateImageProgress) -> bool:
+        self._read_progress.set_fraction(update.fraction)
+        self._read_progress.set_text(f"{update.fraction * 100:.1f}%")
+        self._progress_track.set_text(
+            f"Track {update.track_number} of {update.track_count}  •  "
+            f"Cylinder {update.cylinder}  •  Head {update.head}"
+        )
+        self._progress_sectors.set_text("Creating blank track layout")
+        self._progress_message.set_text(update.message)
+        return GLib.SOURCE_REMOVE
+
+    def _finish_blank_creation(
+        self,
+        result: CreateImageResult,
+        destination: Path,
+        disk_format: DiskFormat,
+    ) -> bool:
+        self._end_cancellable_operation()
+        self._stack.set_visible_child_name("dashboard")
+        if not result.succeeded:
+            self._show_error(
+                "Unable to create blank image", result.summary, result.diagnostic
+            )
+            return GLib.SOURCE_REMOVE
+        dialog = Adw.MessageDialog.new(
+            self,
+            "Complete",
+            (
+                f"Created {destination.name} as {disk_format.label}.\n\n"
+                + (
+                    f"It contains a ready-to-use {result.filesystem} filesystem."
+                    if result.filesystem
+                    else "This is blank media without a filesystem. Initialise or "
+                    "format it on the target system before adding files."
+                )
+            ),
+        )
+        dialog.add_response("close", "Close")
+        dialog.set_default_response("close")
+        dialog.set_close_response("close")
+        dialog.present()
+        return GLib.SOURCE_REMOVE
 
     def _on_write_image_selected(
         self, chooser: Gtk.FileChooserNative, response: int
@@ -359,6 +1363,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         self._progress_message.set_text("Starting Greaseweazle…")
         self._stack.set_visible_child_name("reading")
+        controller = self._begin_cancellable_operation()
 
         def worker() -> None:
             try:
@@ -368,7 +1373,11 @@ class MainWindow(Adw.ApplicationWindow):
                     )
 
                 result = write_disk(
-                    image_path, disk_format, progress=report_progress
+                    image_path,
+                    disk_format,
+                    progress=report_progress,
+                    controller=controller,
+                    drive=self._drive,
                 )
             except Exception as error:
                 result = WriteResult(
@@ -397,9 +1406,23 @@ class MainWindow(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def _finish_write(self, result: WriteResult, image_path: Path) -> bool:
+        self._end_cancellable_operation()
         self._stack.set_visible_child_name("dashboard")
+        health_report = build_write_health(result.progress, result.succeeded)
         if not result.succeeded:
-            self._show_error("Unable to write disk", result.summary, result.diagnostic)
+            dialog = self._show_error(
+                "Unable to write disk", result.summary, result.diagnostic
+            )
+            if health_report is not None:
+                dialog.add_response("health", "View track report")
+                dialog.connect(
+                    "response",
+                    lambda _dialog, response: self._show_health_report(
+                        "Write verification", health_report
+                    )
+                    if response == "health"
+                    else None,
+                )
             return GLib.SOURCE_REMOVE
         dialog = Adw.MessageDialog.new(
             self,
@@ -407,6 +1430,16 @@ class MainWindow(Adw.ApplicationWindow):
             f"{image_path.name}: {result.summary}",
         )
         dialog.add_response("close", "Close")
+        if health_report is not None:
+            dialog.add_response("health", "View track report")
+            dialog.connect(
+                "response",
+                lambda _dialog, response: self._show_health_report(
+                    "Write verification", health_report
+                )
+                if response == "health"
+                else None,
+            )
         dialog.set_default_response("close")
         dialog.set_close_response("close")
         dialog.present()
@@ -434,6 +1467,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._progress_sectors.set_text("Quick format probe • 2 track sides")
         self._progress_message.set_text("Starting Greaseweazle…")
         self._stack.set_visible_child_name("reading")
+        controller = self._begin_cancellable_operation()
 
         def worker() -> None:
             try:
@@ -445,20 +1479,31 @@ class MainWindow(Adw.ApplicationWindow):
                     probe_image,
                     progress=report_read,
                     tracks="c=0:h=0-1",
+                    **self._capture_profile.read_options,
+                    controller=controller,
+                    drive=self._drive,
                 )
                 if not read_result.succeeded:
                     GLib.idle_add(self._finish_read, read_result, temporary, None)
                     return
                 GLib.idle_add(self._show_detecting_probe)
                 probe = probe_format(
-                    probe_image, Path(temporary.name), candidates=candidates
+                    probe_image,
+                    Path(temporary.name),
+                    candidates=candidates,
+                    controller=controller,
                 )
                 if probe.disk_format is not None:
                     disk_format = probe.disk_format
                     GLib.idle_add(self._show_identified_read, disk_format)
                     image_path = Path(temporary.name) / f"disk{disk_format.suffix}"
                     read_result = read_disk(
-                        disk_format, image_path, progress=report_read
+                        disk_format,
+                        image_path,
+                        progress=report_read,
+                        **self._capture_profile.read_options,
+                        controller=controller,
+                        drive=self._drive,
                     )
                     if not read_result.succeeded:
                         GLib.idle_add(self._finish_read, read_result, temporary, None)
@@ -481,6 +1526,9 @@ class MainWindow(Adw.ApplicationWindow):
                             raw_image,
                             progress=report_read,
                             tracks="c=0-82:h=0-1",
+                            **self._capture_profile.read_options,
+                            controller=controller,
+                            drive=self._drive,
                         )
                         if not raw_result.succeeded:
                             failed = ReadResult(
@@ -530,7 +1578,12 @@ class MainWindow(Adw.ApplicationWindow):
                 raw_image = Path(temporary.name) / "disk.scp"
                 GLib.idle_add(self._show_full_capture)
                 read_result = read_disk(
-                    AUTO_DETECT_FORMAT, raw_image, progress=report_read
+                    AUTO_DETECT_FORMAT,
+                    raw_image,
+                    progress=report_read,
+                    **self._capture_profile.read_options,
+                    controller=controller,
+                    drive=self._drive,
                 )
                 if not read_result.succeeded:
                     GLib.idle_add(self._finish_read, read_result, temporary, None)
@@ -545,6 +1598,7 @@ class MainWindow(Adw.ApplicationWindow):
                     Path(temporary.name),
                     progress=report_detection,
                     candidates=candidates,
+                    controller=controller,
                 )
                 GLib.idle_add(
                     self._finish_auto_detection, detection, temporary, save_image
@@ -644,6 +1698,11 @@ class MainWindow(Adw.ApplicationWindow):
         temporary: tempfile.TemporaryDirectory[str],
         save_image: bool,
     ) -> bool:
+        self._end_cancellable_operation()
+        if detection.classification == "cancelled":
+            temporary.cleanup()
+            self._stack.set_visible_child_name("dashboard")
+            return GLib.SOURCE_REMOVE
         if detection.disk_format is None or detection.contents is None:
             if save_image:
                 self._choose_detected_image_location(detection, temporary)
@@ -658,7 +1717,13 @@ class MainWindow(Adw.ApplicationWindow):
         self._finish_read(
             ReadResult(True, "Disk identified."),
             temporary,
-            (detection.contents, Path(temporary.name) / "export-cache"),
+            (
+                detection.contents,
+                Path(temporary.name) / "export-cache",
+                detection.image_path,
+                detection.disk_format,
+                (),
+            ),
         )
         return GLib.SOURCE_REMOVE
 
@@ -754,8 +1819,11 @@ class MainWindow(Adw.ApplicationWindow):
             try:
                 shutil.copy2(detection.image_path, destination)
             except OSError as error:
-                failed = ReadResult(False, "The image could not be saved.", str(error))
-                GLib.idle_add(self._finish_read, failed, temporary, None)
+                GLib.idle_add(
+                    self._finish_image_save_error,
+                    temporary,
+                    str(error),
+                )
                 return
             temporary.cleanup()
             GLib.idle_add(self._finish_image_save, destination)
@@ -771,6 +1839,20 @@ class MainWindow(Adw.ApplicationWindow):
         )
         dialog.add_response("close", "Close")
         dialog.present()
+        return GLib.SOURCE_REMOVE
+
+    def _finish_image_save_error(
+        self,
+        temporary: tempfile.TemporaryDirectory[str],
+        diagnostic: str,
+    ) -> bool:
+        temporary.cleanup()
+        self._stack.set_visible_child_name("dashboard")
+        self._show_error(
+            "Unable to save disk image",
+            "The disk was read, but the image could not be saved.",
+            diagnostic,
+        )
         return GLib.SOURCE_REMOVE
 
     def _choose_disk_format(self, _button: Gtk.Button, *, save_image: bool) -> None:
@@ -807,6 +1889,8 @@ class MainWindow(Adw.ApplicationWindow):
         include_atari_auto: bool = False,
         include_raw_flux: bool = False,
         initial_format: DiskFormat | None = None,
+        excluded_formats: frozenset[str] = frozenset(),
+        on_selected: Callable[[str], None] | None = None,
     ) -> Gtk.Widget:
         choice_box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
@@ -814,15 +1898,15 @@ class MainWindow(Adw.ApplicationWindow):
             margin_top=12,
             margin_bottom=6,
         )
-        initial_label = (
-            "Raw formats — raw flux (no conversion)"
-            if initial_format is not None and not initial_format.gw_format
-            else
-            f"{manufacturer_name(initial_format.gw_format)} — "
-            f"{format_menu_label(initial_format.gw_format)}"
-            if initial_format is not None
-            else "Choose manufacturer and format…"
-        )
+        if initial_format is None:
+            initial_label = "Choose manufacturer and format…"
+        elif not initial_format.gw_format:
+            initial_label = "Raw formats — raw flux (no conversion)"
+        else:
+            initial_label = (
+                f"{manufacturer_name(initial_format.gw_format)} — "
+                f"{format_menu_label(initial_format.gw_format)}"
+            )
         menu_button = Gtk.MenuButton(
             label=initial_label,
             hexpand=True,
@@ -830,7 +1914,23 @@ class MainWindow(Adw.ApplicationWindow):
         )
         menu = Gio.Menu()
         raw_flux_added = False
-        for manufacturer, formats in grouped_formats():
+        available_groups = tuple(
+            (
+                manufacturer,
+                tuple(
+                    disk_format
+                    for disk_format in formats
+                    if disk_format.gw_format not in excluded_formats
+                ),
+            )
+            for manufacturer, formats in grouped_formats()
+        )
+        available_groups = tuple(
+            (manufacturer, formats)
+            for manufacturer, formats in available_groups
+            if formats
+        )
+        for manufacturer, formats in available_groups:
             submenu = Gio.Menu()
             if include_raw_flux and manufacturer == "Raw formats":
                 raw_section = Gio.Menu()
@@ -891,6 +1991,8 @@ class MainWindow(Adw.ApplicationWindow):
                 )
             menu_button.set_label(label)
             dialog.set_response_enabled(response_id, True)
+            if on_selected is not None:
+                on_selected(format_name)
 
         select_action.connect("activate", select_format)
         action_group.add_action(select_action)
@@ -899,7 +2001,10 @@ class MainWindow(Adw.ApplicationWindow):
         choice_box.append(menu_button)
         choice_box.append(
             Gtk.Label(
-                label=f"{sum(len(items) for _name, items in grouped_formats())} installed formats",
+                label=(
+                    f"{sum(len(items) for _name, items in available_groups)} "
+                    "available formats"
+                ),
                 xalign=0,
                 css_classes=["dim-label"],
             )
@@ -924,6 +2029,16 @@ class MainWindow(Adw.ApplicationWindow):
         format_name = selected_format[0]
         if format_name is None:
             return
+        if self._capture_profile.preserve_raw:
+            if not save_image:
+                self._show_error(
+                    "Raw capture cannot be browsed directly",
+                    "Use “Extract disk to image” with the Protected software profile. "
+                    "The resulting SCP can then be inspected or written back losslessly.",
+                )
+                return
+            self._choose_image_location(PRESERVATION_FORMAT)
+            return
         if format_name == "__atari_auto__":
             atari_formats = tuple(
                 item
@@ -940,7 +2055,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         if disk_format is None:
             return
-        if not save_image and disk_format.suffix not in {".adf", ".st"}:
+        if not save_image and disk_format.suffix not in {".adf", ".st", ".ssd", ".dsd", ".d64"}:
             self._show_error(
                 "Directory browsing is not available for this format",
                 (
@@ -954,6 +2069,9 @@ class MainWindow(Adw.ApplicationWindow):
             destination = Path(temporary.name) / f"disk{disk_format.suffix}"
             self._start_read(disk_format, destination, temporary)
             return
+        self._choose_image_location(disk_format)
+
+    def _choose_image_location(self, disk_format: DiskFormat) -> None:
         chooser = Gtk.FileChooserNative.new(
             "Save disk image",
             self,
@@ -1016,6 +2134,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         self._progress_message.set_text("Starting Greaseweazle…")
         self._stack.set_visible_child_name("reading")
+        controller = self._begin_cancellable_operation()
 
         def worker() -> None:
             active_temporary = temporary
@@ -1023,13 +2142,20 @@ class MainWindow(Adw.ApplicationWindow):
                 def report_progress(update: ReadProgress) -> None:
                     GLib.idle_add(self._update_read_progress, update)
 
-                result = read_disk(disk_format, destination, progress=report_progress)
+                result = read_disk(
+                    disk_format,
+                    destination,
+                    progress=report_progress,
+                    controller=controller,
+                    drive=self._drive,
+                    **self._capture_profile.read_options,
+                )
                 if not result.succeeded:
                     GLib.idle_add(self._finish_read, result, active_temporary, None)
                     return
                 if active_temporary is None:
                     GLib.idle_add(
-                        self._finish_image_only_read, destination, disk_format
+                        self._finish_image_only_read, destination, disk_format, result
                     )
                     return
                 GLib.idle_add(self._show_extracting_files)
@@ -1053,7 +2179,7 @@ class MainWindow(Adw.ApplicationWindow):
                     self._finish_read,
                     result,
                     active_temporary,
-                    (contents, cache_path),
+                    (contents, cache_path, destination, disk_format, result.progress),
                 )
             except Exception as error:
                 # This worker is the outer boundary for hardware and image
@@ -1069,13 +2195,36 @@ class MainWindow(Adw.ApplicationWindow):
         threading.Thread(target=worker, name="disk-reader", daemon=True).start()
 
     def _finish_image_only_read(
-        self, destination: Path, disk_format: DiskFormat
+        self,
+        destination: Path,
+        disk_format: DiskFormat,
+        result: ReadResult,
     ) -> bool:
+        self._end_cancellable_operation()
         self._stack.set_visible_child_name("dashboard")
+        report_note = ""
+        if self._save_capture_report:
+            try:
+                report_path = write_capture_report(
+                    destination,
+                    disk_format,
+                    result,
+                    profile_name=self._capture_profile.name,
+                    device_model=self._device_model,
+                    device_port=self._device_port,
+                )
+                report_note = f"\n\nCapture report: {report_path.name}"
+            except OSError as error:
+                report_note = f"\n\nThe capture report could not be saved: {error}"
         dialog = Adw.MessageDialog.new(
             self,
             "Complete",
-            f"The disk image was saved as {destination.name}.",
+            (
+                f"The disk image was saved as {destination.name}.\n\n"
+                f"{build_track_health(result.progress).summary}{report_note}"
+                if build_track_health(result.progress) is not None
+                else f"The disk image was saved as {destination.name}.{report_note}"
+            ),
         )
         dialog.add_response("close", "Close")
         dialog.present()
@@ -1110,24 +2259,50 @@ class MainWindow(Adw.ApplicationWindow):
         self,
         result: ReadResult,
         temporary: tempfile.TemporaryDirectory[str] | None,
-        browser_details: tuple[DiskContents, Path] | None,
+        browser_details: tuple[
+            DiskContents, Path, Path, DiskFormat, tuple[ReadProgress, ...]
+        ] | None,
     ) -> bool:
-        if not result.succeeded or temporary is None or browser_details is None:
+        self._end_cancellable_operation()
+        if not result.succeeded:
             if temporary is not None:
                 temporary.cleanup()
             self._stack.set_visible_child_name("dashboard")
-            self._show_error("Unable to browse disk", result.summary, result.diagnostic)
+            self._show_error("Unable to read disk", result.summary, result.diagnostic)
+            return GLib.SOURCE_REMOVE
+
+        if temporary is None or browser_details is None:
+            if temporary is not None:
+                temporary.cleanup()
+            self._stack.set_visible_child_name("dashboard")
+            self._show_error(
+                "Unable to browse disk",
+                "The disk was read, but its directory could not be opened.",
+                result.diagnostic,
+            )
             return GLib.SOURCE_REMOVE
 
         existing = self._stack.get_child_by_name("browser")
         if existing is not None:
             self._stack.remove(existing)
-        contents, cache_path = browser_details
+        contents, cache_path, image_path, disk_format, read_progress = browser_details
+        health_report = build_track_health(result.progress)
         try:
             browser = DiskBrowser(
                 contents,
                 cache_path,
                 on_done=self._leave_browser,
+                health_report=health_report,
+                on_retry_damaged=(
+                    lambda: self._start_track_retry(
+                        image_path,
+                        disk_format,
+                        temporary,
+                        read_progress,
+                    )
+                    if health_report is not None and health_report.damaged_count
+                    else None
+                ),
             )
         except Exception as error:
             temporary.cleanup()
@@ -1138,43 +2313,305 @@ class MainWindow(Adw.ApplicationWindow):
                 f"{type(error).__name__}: {error}",
             )
             return GLib.SOURCE_REMOVE
-        self._temporary_directories.append(temporary)
+        if temporary not in self._temporary_directories:
+            self._temporary_directories.append(temporary)
         self.set_default_size(1180, 720)
         self._stack.add_named(browser, "browser")
         self._stack.set_visible_child_name("browser")
         return GLib.SOURCE_REMOVE
 
+    def _start_track_retry(
+        self,
+        image_path: Path,
+        disk_format: DiskFormat,
+        temporary: tempfile.TemporaryDirectory[str],
+        previous_progress: tuple[ReadProgress, ...],
+    ) -> None:
+        report = build_track_health(previous_progress)
+        if report is None or not report.damaged_count:
+            return
+        self._reading_page.set_title("Retrying damaged tracks…")
+        self._reading_page.set_description(
+            "Only damaged track sides will be re-read; the image is replaced atomically."
+        )
+        self._read_progress.set_fraction(0)
+        self._read_progress.set_text("0%")
+        self._progress_track.set_text(
+            f"Preparing {report.damaged_count} damaged track side(s)…"
+        )
+        self._progress_sectors.set_text("Difficult-media recovery settings")
+        self._progress_message.set_text("Starting Greaseweazle…")
+        self._stack.set_visible_child_name("reading")
+        controller = self._begin_cancellable_operation()
+
+        def worker() -> None:
+            def progress(update: ReadProgress) -> None:
+                GLib.idle_add(self._update_read_progress, update)
+
+            try:
+                retried = retry_damaged_tracks(
+                    image_path,
+                    disk_format,
+                    report,
+                    progress=progress,
+                    controller=controller,
+                    drive=self._drive,
+                )
+            except Exception as error:
+                retried = RetryTracksResult(
+                    False,
+                    "Retrying damaged tracks stopped unexpectedly.",
+                    f"{type(error).__name__}: {error}",
+                )
+            GLib.idle_add(
+                self._finish_track_retry,
+                retried,
+                image_path,
+                disk_format,
+                temporary,
+                previous_progress,
+            )
+
+        threading.Thread(target=worker, name="track-retry", daemon=True).start()
+
+    def _finish_track_retry(
+        self,
+        retried: RetryTracksResult,
+        image_path: Path,
+        disk_format: DiskFormat,
+        temporary: tempfile.TemporaryDirectory[str],
+        previous_progress: tuple[ReadProgress, ...],
+    ) -> bool:
+        self._end_cancellable_operation()
+        if not retried.succeeded:
+            self._stack.set_visible_child_name("dashboard")
+            self._show_error(
+                "Unable to retry damaged tracks", retried.summary, retried.diagnostic
+            )
+            return GLib.SOURCE_REMOVE
+        try:
+            contents = open_image(image_path)
+        except (FilesystemError, OSError) as error:
+            self._stack.set_visible_child_name("dashboard")
+            self._show_error(
+                "Unable to reopen recovered image",
+                "The retry completed, but the filesystem still could not be opened.",
+                str(error),
+            )
+            return GLib.SOURCE_REMOVE
+        combined = previous_progress + retried.progress
+        result = ReadResult(True, retried.summary, retried.diagnostic, combined)
+        return self._finish_read(
+            result,
+            temporary,
+            (
+                contents,
+                Path(temporary.name) / "export-cache",
+                image_path,
+                disk_format,
+                combined,
+            ),
+        )
+
     def _leave_browser(self) -> None:
         self.set_default_size(720, 560)
         self._stack.set_visible_child_name("dashboard")
 
-    def _show_error(self, title: str, summary: str, diagnostic: str = "") -> None:
+    def _show_health_report(
+        self, title: str, report: TrackHealthReport
+    ) -> None:
+        dialog = Adw.MessageDialog.new(self, title, report.summary)
+        grid = Gtk.Grid(column_spacing=14, row_spacing=4, margin_top=8)
+        grid.attach(Gtk.Label(label="Cylinder", css_classes=["heading"]), 0, 0, 1, 1)
+        heads = sorted({track.head for track in report.tracks})
+        for column, head in enumerate(heads, start=1):
+            grid.attach(Gtk.Label(label=f"Head {head}", css_classes=["heading"]), column, 0, 1, 1)
+        lookup = {(track.cylinder, track.head): track for track in report.tracks}
+        for row, cylinder in enumerate(
+            sorted({track.cylinder for track in report.tracks}), start=1
+        ):
+            grid.attach(Gtk.Label(label=str(cylinder), xalign=1), 0, row, 1, 1)
+            for column, head in enumerate(heads, start=1):
+                track = lookup.get((cylinder, head))
+                if track is None:
+                    marker = Gtk.Label(label="—", css_classes=["dim-label"])
+                else:
+                    css = {
+                        TrackCondition.GOOD: "success",
+                        TrackCondition.RECOVERED: "warning",
+                        TrackCondition.DAMAGED: "error",
+                    }[track.condition]
+                    marker = Gtk.Label(label="●", css_classes=[css])
+                    marker.set_tooltip_text(track.message)
+                grid.attach(marker, column, row, 1, 1)
+        scroller = Gtk.ScrolledWindow(min_content_height=320, max_content_height=420)
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_child(grid)
+        dialog.set_extra_child(scroller)
+        dialog.add_response("close", "Close")
+        dialog.present()
+
+    def _show_error(
+        self, title: str, summary: str, diagnostic: str = ""
+    ) -> Adw.MessageDialog:
         body = summary
         if diagnostic:
             cleaned = diagnostic.strip()
-            if len(cleaned) > 1800:
-                cleaned = f"…{cleaned[-1800:]}"
-            body = f"{body}\n\nDetails:\n{cleaned}"
+            self._diagnostic_log.append(
+                f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] "
+                f"{title}\n{summary}\n{cleaned}"
+            )
         dialog = Adw.MessageDialog.new(self, title, body)
         dialog.add_response("close", "Close")
+        if diagnostic:
+            view = Gtk.TextView(
+                editable=False,
+                cursor_visible=False,
+                monospace=True,
+                wrap_mode=Gtk.WrapMode.WORD_CHAR,
+                top_margin=6,
+                bottom_margin=6,
+                left_margin=6,
+                right_margin=6,
+            )
+            view.get_buffer().set_text(diagnostic.strip())
+            scroller = Gtk.ScrolledWindow(
+                min_content_height=140, max_content_height=280
+            )
+            scroller.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+            scroller.set_child(view)
+            dialog.set_extra_child(scroller)
+            dialog.add_response("copy", "Copy details")
+            dialog.add_response("save", "Save details…")
+            dialog.connect(
+                "response",
+                lambda _dialog, response: self._copy_diagnostic(diagnostic)
+                if response == "copy"
+                else self._choose_diagnostic_save(diagnostic)
+                if response == "save"
+                else None,
+            )
         dialog.set_default_response("close")
         dialog.set_close_response("close")
         dialog.present()
+        return dialog
+
+    def _copy_diagnostic(self, diagnostic: str) -> None:
+        clipboard = Gdk.Display.get_default().get_clipboard()
+        clipboard.set(diagnostic)
+
+    def _show_diagnostic_log(self, _button: Gtk.Button) -> None:
+        text = "\n\n".join(self._diagnostic_log)
+        if not text:
+            dialog = Adw.MessageDialog.new(
+                self, "Diagnostic log", "No operation errors have been recorded this session."
+            )
+            dialog.add_response("close", "Close")
+            dialog.present()
+            return
+        dialog = Adw.MessageDialog.new(
+            self,
+            "Diagnostic log",
+            "This contains tool output and local filenames, but never disk file contents.",
+        )
+        view = Gtk.TextView(editable=False, monospace=True, wrap_mode=Gtk.WrapMode.WORD_CHAR)
+        view.get_buffer().set_text(text)
+        scroller = Gtk.ScrolledWindow(min_content_height=300, max_content_height=440)
+        scroller.set_child(view)
+        dialog.set_extra_child(scroller)
+        dialog.add_response("close", "Close")
+        dialog.add_response("copy", "Copy")
+        dialog.add_response("save", "Save…")
+        dialog.add_response("clear", "Clear")
+
+        def respond(_dialog: Adw.MessageDialog, response: str) -> None:
+            if response == "copy":
+                self._copy_diagnostic(text)
+            elif response == "save":
+                self._choose_diagnostic_save(text)
+            elif response == "clear":
+                self._diagnostic_log.clear()
+
+        dialog.connect("response", respond)
+        dialog.present()
+
+    def _choose_diagnostic_save(self, diagnostic: str) -> None:
+        chooser = Gtk.FileChooserNative.new(
+            "Save diagnostic log",
+            self,
+            Gtk.FileChooserAction.SAVE,
+            "Save",
+            "Cancel",
+        )
+        chooser.set_current_name("greaseweazle-diagnostics.txt")
+        chooser.connect("response", self._on_diagnostic_save, diagnostic)
+        self._file_chooser = chooser
+        chooser.show()
+
+    def _on_diagnostic_save(
+        self, chooser: Gtk.FileChooserNative, response: int, diagnostic: str
+    ) -> None:
+        self._file_chooser = None
+        if response != Gtk.ResponseType.ACCEPT:
+            return
+        selected = chooser.get_file()
+        selected_path = selected.get_path() if selected is not None else None
+        if selected_path is None:
+            return
+        try:
+            Path(selected_path).write_text(diagnostic, encoding="utf-8")
+        except OSError as error:
+            self._show_error("Unable to save diagnostics", str(error))
 
     def begin_device_detection(
         self,
         detector: Callable[[], DeviceProbeResult] = detect_device,
+        *,
+        silent: bool = False,
     ) -> None:
         """Run device detection without blocking GTK's event loop."""
+        if self._device_detection_active:
+            return
+        self._device_detection_active = True
+        self._device_retry_button.set_sensitive(False)
+        if not silent:
+            self._device_row.set_subtitle("Checking USB connection…")
 
         def worker() -> None:
             result = detector()
-            GLib.idle_add(self._finish_device_detection, result)
+            GLib.idle_add(self._finish_device_detection, result, silent)
 
         threading.Thread(target=worker, name="device-detection", daemon=True).start()
 
-    def _finish_device_detection(self, result: DeviceProbeResult) -> bool:
+    def _poll_device(self) -> bool:
+        if (
+            self._initial_detection_complete
+            and not self._device_detection_active
+            and self._active_operation is None
+            and self._stack.get_visible_child_name() == "dashboard"
+        ):
+            self.begin_device_detection(silent=True)
+        return GLib.SOURCE_CONTINUE
+
+    def _finish_device_detection(
+        self, result: DeviceProbeResult, silent: bool = False
+    ) -> bool:
+        was_connected = self._device_connected
+        self._device_detection_active = False
+        self._initial_detection_complete = True
+        self._device_connected = result.connected
+        self._host_tools_available = result.host_tools_available
+        for button in self._device_required_buttons:
+            button.set_sensitive(result.connected)
+        for button in self._tools_required_buttons:
+            button.set_sensitive(result.host_tools_available)
+        self._device_retry_button.set_sensitive(not result.connected)
         if result.connected:
+            self._device_model = result.model
+            self._device_port = result.port
+            self._device_group.set_description(
+                "The connected Greaseweazle is ready."
+            )
             self._device_row.set_title(result.model)
             self._device_row.set_subtitle(result.port)
             self._stack.set_visible_child_name("dashboard")
@@ -1185,23 +2622,44 @@ class MainWindow(Adw.ApplicationWindow):
             ).start()
             return GLib.SOURCE_REMOVE
 
+        self._device_group.set_description(
+            "Image browsing remains available without connected hardware."
+        )
+        self._device_row.set_title("Greaseweazle unavailable")
+        self._device_row.set_subtitle(result.summary)
+        self._stack.set_visible_child_name("dashboard")
+        if silent:
+            if was_connected and result.diagnostic:
+                self._diagnostic_log.append(
+                    f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] "
+                    f"Device disconnected\n{result.summary}\n{result.diagnostic}"
+                )
+            return GLib.SOURCE_REMOVE
         dialog = Adw.MessageDialog.new(
             self,
             "Greaseweazle not available",
             (
                 f"{result.summary}\n\n"
-                "Connect the Greaseweazle by USB, check that your user has "
-                "permission to access it, then start the application again."
+                "You can continue to open existing images, or connect the "
+                "hardware and choose Retry from the Device row."
             ),
         )
         dialog.add_response("quit", "Quit")
-        dialog.set_default_response("quit")
-        dialog.set_close_response("quit")
+        dialog.add_response("offline", "Use images offline")
+        dialog.set_response_appearance(
+            "offline", Adw.ResponseAppearance.SUGGESTED
+        )
+        dialog.set_default_response("offline")
+        dialog.set_close_response("offline")
         dialog.connect("response", self._on_detection_dialog_response)
         dialog.present()
         return GLib.SOURCE_REMOVE
 
-    def _on_detection_dialog_response(self, _dialog: Adw.MessageDialog, _response: str) -> None:
+    def _on_detection_dialog_response(
+        self, _dialog: Adw.MessageDialog, response: str
+    ) -> None:
+        if response != "quit":
+            return
         application = self.get_application()
         if application is not None:
             application.quit()

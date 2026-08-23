@@ -45,6 +45,7 @@ class DetectDeviceTests(unittest.TestCase):
 
         self.assertFalse(result.connected)
         self.assertIn("not installed", result.summary)
+        self.assertFalse(result.host_tools_available)
 
     @patch("greaseweazle_gui.device.subprocess.run")
     @patch("greaseweazle_gui.device.shutil.which", return_value="/usr/bin/gw")
@@ -80,4 +81,3 @@ class DetectDeviceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
