@@ -86,7 +86,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ./dist/*.deb
-          /usr/lib/greaseweazlegui/bin/gw --help
+          /usr/lib/greaseweazlegui/bin/gw info --help
           PYTHONPATH=/usr/lib/greaseweazlegui python3 -c "import greaseweazle_gui, greaseweazle"
 
       - name: Create checksums
