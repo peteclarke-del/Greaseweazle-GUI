@@ -1,4 +1,4 @@
-# GreaseWeazleGUI
+# Greaseweazle-GUI
 
 ## for linux
 
@@ -90,7 +90,7 @@ The known-format menu is generated from the installed Greaseweazle version. It
 contains every format advertised by `gw`, sorted into manufacturer submenus,
 and loads each format's cylinder and head geometry for accurate progress.
 The format menu and filesystem browser solve different parts of the job.
-Greaseweazle decodes the physical track format. GreaseWeazleGUI then needs a
+Greaseweazle decodes the physical track format. Greaseweazle-GUI then needs a
 filesystem reader to show normal files and folders. Current readers support
 Atari TOS FAT12 (`.st`), compatible FAT12 sector images (`.img` and `.ima`),
 AmigaDOS OFS/FFS (`.adf`), Acorn DFS (`.ssd` and `.dsd`), and Commodore 1541
@@ -168,19 +168,19 @@ host tools according to the upstream Greaseweazle documentation.
 ## Install a release
 
 GitHub Releases provide a native `.deb` installer for 64-bit Ubuntu 24.04 and
-Linux Mint 22. The installer includes GreaseWeazleGUI, the illustrated guide,
+Linux Mint 22. The installer includes Greaseweazle-GUI, the illustrated guide,
 Greaseweazle Host Tools 1.23, and the official Linux device-access rules. GTK,
 libadwaita, and Python are installed or updated through the distribution package
 manager.
 
-1. Download `GreaseWeazleGUI_VERSION_ubuntu24.04_amd64.deb` and `SHA256SUMS`
+1. Download `Greaseweazle-GUI_VERSION_ubuntu24.04_amd64.deb` and `SHA256SUMS`
    from the matching GitHub Release.
 2. From the download folder, run
    `sha256sum --check --ignore-missing SHA256SUMS`.
 3. Install with
-   `sudo apt install ./GreaseWeazleGUI_VERSION_ubuntu24.04_amd64.deb`.
+   `sudo apt install ./Greaseweazle-GUI_VERSION_ubuntu24.04_amd64.deb`.
 4. Unplug and reconnect the Greaseweazle so the new device rule takes effect.
-5. Open **GreaseWeazleGUI** from the GNOME application grid, or run
+5. Open **Greaseweazle-GUI** from the GNOME application grid, or run
    `greaseweazle-gui` from a terminal.
 
 Remove it with `sudo apt remove greaseweazlegui`. User disk images, capture
@@ -202,13 +202,13 @@ To build the installer locally on Ubuntu 24.04, run
 ## Run from the source tree
 
 ```sh
-./greaseweazlegui
+./greaseweazle-gui
 ```
 
 For UI development without attached hardware, opt in to the simulated device:
 
 ```sh
-GREASEWEAZLE_GUI_DEMO=1 ./greaseweazlegui
+GREASEWEAZLE_GUI_DEMO=1 ./greaseweazle-gui
 ```
 
 The simulation is never enabled by default.

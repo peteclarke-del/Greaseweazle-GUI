@@ -96,13 +96,13 @@ Architecture: ${architecture}
 Installed-Size: ${installed_size}
 Maintainer: Pete Clarke <peteclarke-del@users.noreply.github.com>
 Depends: python3 (>= 3.12), python3 (<< 3.13), python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1
-Homepage: https://github.com/peteclarke-del/GreaseWeaselGUI
+Homepage: https://github.com/peteclarke-del/Greaseweazle-GUI
 Description: Native Linux interface for Greaseweazle disk operations
- GreaseWeazleGUI reads, writes, creates, inspects, and browses floppy disk
+ Greaseweazle-GUI reads, writes, creates, inspects, and browses floppy disk
  images using Greaseweazle hardware. The package includes Greaseweazle Host
  Tools ${greaseweazle_version} and the Linux device-access rules.
 EOF
 
-artifact="${output_dir}/GreaseWeazleGUI_${package_version}_ubuntu24.04_${architecture}.deb"
+artifact="${output_dir}/Greaseweazle-GUI_${package_version}_ubuntu24.04_${architecture}.deb"
 dpkg-deb --root-owner-group --build "${package_root}" "${artifact}"
 echo "Created ${artifact}"
