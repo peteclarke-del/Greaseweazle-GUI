@@ -1,0 +1,16 @@
+# UDEV Rules for Greaseweazle
+#
+# Copied from the Greaseweazle Host Tools v1.23 release. Greaseweazle is
+# distributed under the Unlicense. Reconnect the device after installation.
+
+ATTRS{manufacturer}=="Keir Fraser", ATTRS{product}=="Greaseweazle", \
+    ENV{ID_MM_DEVICE_IGNORE}="1"
+ATTRS{manufacturer}=="Keir Fraser", ATTRS{product}=="Greaseweazle", \
+    ENV{MTP_NO_PROBE}="1"
+ATTRS{manufacturer}=="Keir Fraser", ATTRS{product}=="Greaseweazle", \
+    SUBSYSTEMS=="usb", TAG+="uaccess"
+ATTRS{manufacturer}=="Keir Fraser", ATTRS{product}=="Greaseweazle", \
+    KERNEL=="ttyACM*", TAG+="uaccess"
+ACTION=="add", \
+    ATTRS{manufacturer}=="Keir Fraser", ATTRS{product}=="Greaseweazle", \
+    SYMLINK+="greaseweazle"

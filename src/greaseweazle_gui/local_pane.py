@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import gi
@@ -41,6 +41,9 @@ class LocalFilePane(Gtk.Box):
         self._drop_files = drop_files
         self._open_file = open_file
         self._context_menu: Gtk.PopoverMenu | None = None
+        self._sort_key = "name"
+        self._sort_reverse = False
+        self._show_hidden = False
 
         header = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL,
@@ -101,6 +104,24 @@ class LocalFilePane(Gtk.Box):
         self.append(self.status)
         self.refresh()
 
+    def set_active(self, active: bool) -> None:
+        if active:
+            self._path.add_css_class("accent")
+        else:
+            self._path.remove_css_class("accent")
+
+    def go_up(self) -> None:
+        parent = self.current_directory.parent
+        if parent != self.current_directory:
+            self.current_directory = parent
+            self.refresh()
+
+    def set_view_options(self, sort_key: str, reverse: bool, show_hidden: bool) -> None:
+        self._sort_key = sort_key
+        self._sort_reverse = reverse
+        self._show_hidden = show_hidden
+        self.refresh()
+
     def install_context_menu(self, model: Gio.MenuModel) -> None:
         self._context_menu = Gtk.PopoverMenu.new_from_model(model)
         self._context_menu.set_parent(self._list)
@@ -118,23 +139,38 @@ class LocalFilePane(Gtk.Box):
             self._list.remove(row)
         self._path.set_text(str(self.current_directory))
         try:
-            paths = sorted(
-                self.current_directory.iterdir(),
-                key=lambda path: (not path.is_dir(), path.name.casefold()),
-            )
+            paths = [
+                path
+                for path in self.current_directory.iterdir()
+                if self._show_hidden or not path.name.startswith(".")
+            ]
         except OSError as error:
             self.status.set_text(f"Unable to open folder: {error}")
             return
 
-        count = 0
+        entries: list[LocalEntry] = []
         for path in paths:
             try:
                 stat = path.stat()
                 entry = LocalEntry(path, path.is_dir(), stat.st_size, stat.st_mtime)
             except OSError:
                 entry = LocalEntry(path, path.is_dir(), 0, 0)
+            entries.append(entry)
+        if self._sort_key == "size":
+            entries.sort(
+                key=lambda entry: (entry.size, entry.path.name.casefold()),
+                reverse=self._sort_reverse,
+            )
+        else:
+            entries.sort(
+                key=lambda entry: entry.path.name.casefold(),
+                reverse=self._sort_reverse,
+            )
+        # Directories remain grouped first, matching GNOME Files.
+        entries.sort(key=lambda entry: not entry.is_directory)
+        for entry in entries:
             self._list.append(self._make_row(entry))
-            count += 1
+        count = len(entries)
         if count == 0:
             row = Gtk.ListBoxRow(selectable=False, activatable=False)
             label = Gtk.Label(
@@ -160,14 +196,18 @@ class LocalFilePane(Gtk.Box):
         )
         icon = "folder-symbolic" if entry.is_directory else "text-x-generic-symbolic"
         content.append(Gtk.Image.new_from_icon_name(icon))
-        content.append(Gtk.Label(label=entry.path.name, xalign=0, hexpand=True, ellipsize=3))
+        content.append(
+            Gtk.Label(label=entry.path.name, xalign=0, hexpand=True, ellipsize=3)
+        )
         if not entry.is_directory:
             size = Gtk.Label(label=GLib.format_size(entry.size), xalign=1)
             size.add_css_class("dim-label")
             content.append(size)
         if entry.modified:
             changed = Gtk.Label(
-                label=datetime.fromtimestamp(entry.modified).strftime("%d %b %Y %H:%M"),
+                label=datetime.fromtimestamp(entry.modified, timezone.utc)
+                .astimezone()
+                .strftime("%d %b %Y %H:%M"),
                 xalign=1,
             )
             changed.add_css_class("dim-label")
@@ -204,10 +244,7 @@ class LocalFilePane(Gtk.Box):
             self._open_file(entry.path)
 
     def _go_up(self, _button: Gtk.Button) -> None:
-        parent = self.current_directory.parent
-        if parent != self.current_directory:
-            self.current_directory = parent
-            self.refresh()
+        self.go_up()
 
     def _go_home(self, _button: Gtk.Button) -> None:
         self.current_directory = Path.home()
@@ -229,7 +266,12 @@ class LocalFilePane(Gtk.Box):
         if self._context_menu is None:
             return
         rectangle = Gdk.Rectangle()
-        rectangle.x, rectangle.y, rectangle.width, rectangle.height = int(x), int(y), 1, 1
+        rectangle.x, rectangle.y, rectangle.width, rectangle.height = (
+            int(x),
+            int(y),
+            1,
+            1,
+        )
         self._context_menu.set_pointing_to(rectangle)
         self._context_menu.popup()
 

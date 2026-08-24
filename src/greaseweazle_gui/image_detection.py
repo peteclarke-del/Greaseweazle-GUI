@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import struct
 from dataclasses import dataclass
 from pathlib import Path
-import struct
 
-from .disk_formats import DiskFormat, RAW_FLUX_FORMAT
+from .disk_formats import RAW_FLUX_FORMAT, DiskFormat
 from .format_catalog import supported_formats
 
 
@@ -18,15 +18,15 @@ class ImageFormatGuess:
 
 
 def _find_format(name: str) -> DiskFormat | None:
-    return next(
-        (item for item in supported_formats() if item.gw_format == name), None
-    )
+    return next((item for item in supported_formats() if item.gw_format == name), None)
 
 
 def _atari_geometry(header: bytes) -> tuple[int, int, int] | None:
     if len(header) < 64:
         return None
-    little = lambda offset, size: int.from_bytes(header[offset : offset + size], "little")
+    little = lambda offset, size: int.from_bytes(
+        header[offset : offset + size], "little"
+    )
     if little(11, 2) != 512:
         return None
     sectors_per_cluster = header[13]
@@ -73,7 +73,9 @@ def detect_image_format(path: Path) -> ImageFormatGuess:
         with path.open("rb") as image:
             header = image.read(4096)
     except OSError as error:
-        return ImageFormatGuess(None, "error", f"The image could not be opened: {error}")
+        return ImageFormatGuess(
+            None, "error", f"The image could not be opened: {error}"
+        )
 
     if header[:3] == b"DOS":
         name = {

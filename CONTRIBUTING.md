@@ -1,4 +1,4 @@
-# Contributing to Greaseweazle GUI
+# Contributing to GreaseWeazleGUI
 
 This application handles media that may be irreplaceable. Changes must preserve
 source images, make destructive actions explicit, and fail safely.
@@ -27,12 +27,22 @@ Run before submitting:
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tests
-bash -n run.sh
+ruff check src tests
+ruff format --check src tests
+bash -n greaseweazlegui
+bash -n packaging/*.sh
+desktop-file-validate data/com.github.pclarke.GreaseweazleGUI.desktop
+appstreamcli validate --no-net data/com.github.pclarke.GreaseweazleGUI.metainfo.xml
 ```
 
 Format changes should include generated fixtures and negative cases for
 truncation, corruption, invalid geometry, and cancellation. Physical hardware
 evidence is valuable, but does not replace deterministic tests.
+
+Filesystem support is separate from Greaseweazle track-format support. A new
+browser reader must be bounded against loops, invalid offsets, oversized
+directories, recursive structures, and truncated images. Document whether the
+reader can identify content independently or relies on an image suffix.
 
 ## Pull requests
 
