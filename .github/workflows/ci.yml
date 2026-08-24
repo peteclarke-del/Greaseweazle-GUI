@@ -21,6 +21,11 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Install metadata validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y appstream desktop-file-utils
+
       - name: Install project
         run: python -m pip install --no-deps --editable . ruff==0.16.4
 
