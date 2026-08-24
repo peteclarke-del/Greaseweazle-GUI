@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test release source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install metadata validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y appstream desktop-file-utils
+
+      - name: Install project
+        run: python -m pip install --no-deps --editable . ruff==0.16.4
+
+      - name: Check Python style
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+
+      - name: Verify release tag
+        run: ./packaging/check-release-tag.sh "${GITHUB_REF_NAME}"
+
+      - name: Run test suite
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate sources and metadata
+        run: |
+          python -m compileall -q src tests
+          bash -n greaseweazlegui packaging/*.sh
+          desktop-file-validate data/com.github.pclarke.GreaseweazleGUI.desktop
+          appstreamcli validate --no-net data/com.github.pclarke.GreaseweazleGUI.metainfo.xml
+
+  publish:
+    name: Build and publish installers
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build tools
+        run: python -m pip install build
+
+      - name: Build wheel and Ubuntu installer
+        run: |
+          python -m build --wheel --outdir dist
+          ./packaging/build-deb.sh dist
+
+      - name: Inspect installer
+        run: |
+          dpkg-deb --info dist/*.deb
+          dpkg-deb --contents dist/*.deb
+          package_root="$(mktemp -d)"
+          trap 'rm -rf -- "${package_root}"' EXIT
+          dpkg-deb --extract dist/*.deb "${package_root}"
+          if find "${package_root}/usr" -perm /022 -print -quit | grep -q .; then
+            echo "Package contains group-writable or world-writable files" >&2
+            exit 1
+          fi
+
+      - name: Install and verify package
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ./dist/*.deb
+          /usr/lib/greaseweazlegui/bin/gw --help
+          PYTHONPATH=/usr/lib/greaseweazlegui python3 -c "import greaseweazle_gui, greaseweazle"
+
+      - name: Create checksums
+        run: cd dist && sha256sum *.deb *.whl > SHA256SUMS
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GreaseWeazleGUI-${{ github.ref_name }}
+          path: dist/
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}" dist/*
+          --verify-tag
+          --generate-notes
+          --title "GreaseWeazleGUI ${GITHUB_REF_NAME} for linux"

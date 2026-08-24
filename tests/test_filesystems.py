@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import struct
 import tempfile
 import unittest
+from pathlib import Path
 
 from greaseweazle_gui.filesystems import (
     FilesystemError,
@@ -108,9 +108,20 @@ class FilesystemTests(unittest.TestCase):
             self.assertEqual(list(root.iterdir()), [image])
             self.assertEqual(contents.entries[0].read_bytes(), b"hello")
 
+    def test_opens_generic_fat12_img_from_non_atari_format(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "pc-dos.img"
+            image.write_bytes(make_fat12_image())
+
+            contents = open_image(image)
+
+            self.assertEqual(contents.format_label, "FAT12")
+            self.assertEqual(contents.volume_label, "TEST DISK")
+            self.assertEqual(contents.entries[0].read_bytes(), b"hello")
+
     def test_materializes_only_selected_entries(self) -> None:
         reads: list[str] = []
-        first = ImageEntry(
+        ImageEntry(
             "first.txt",
             False,
             size=5,

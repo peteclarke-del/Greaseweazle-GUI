@@ -1,45 +1,79 @@
-# Greaseweazle GUI
+# GreaseWeazleGUI
+
+## for linux
 
 A native GNOME application for reading, writing, and managing floppy-disk
 images with a Greaseweazle device.
 
 The current application:
 
+- uses a restrained main workspace with conventional **File**, **Disk**,
+  **Drive**, and **Help** menus instead of presenting every operation at once;
+- keeps progress, browsing, inspection, comparison, catalogue, diagnostics,
+  health reports, and completion results inside the main application window;
+- includes a comprehensive in-app user guide with real screenshots, detailed
+  workflows, preservation guidance, troubleshooting, and keyboard reference;
 - checks for the `gw` command and a connected Greaseweazle at startup;
-- explains the problem and exits when no device is available;
+- continues in offline image mode when no device is available, while clearly
+  disabling physical operations;
+- opens and browses existing AmigaDOS, FAT12, Acorn DFS, and Commodore 1541
+  images without attached hardware;
 - probes cylinder zero and automatically identifies standard disk formats;
-- reads and browses AmigaDOS and Atari ST disks through a temporary image;
-- optionally extracts a permanent `.adf` or `.st` image;
+- reads browseable filesystems through a temporary sector image;
+- optionally extracts a permanent sector image using the suffix appropriate to
+  the selected Greaseweazle format;
 - preserves unrecognised or special-format disks as lossless `.scp` captures;
 - treats a recognised geometry with an invalid filesystem as potentially
   protected, then captures cylinders 0–82 on both heads as lossless SCP;
-- browses Amiga OFS/FFS and Atari FAT12 directories without extracting every file; and
-- copies files and folders to GNOME Files using drag-and-drop or Copy/Paste.
+- browses Amiga OFS/FFS, Atari TOS and compatible FAT12, Acorn DFS, and
+  Commodore 1541 DOS directories through bounded read-only filesystem plugins;
+- copies files and folders to GNOME Files using drag-and-drop or Copy/Paste;
 - provides a toggleable Directory Opus-style dual-pane browser with the disk on
   the left and the local filesystem on the right;
 - provides menu-bar, toolbar, keyboard and context-menu actions for Open, Cut,
   Copy, Paste, Rename, New Folder, Properties, Select All, Refresh and Trash;
 - accepts file-list clipboard and drag-and-drop transfers from GNOME Files;
+- offers Skip, Keep Both, or Replace for transfer conflicts and reports partial
+  copy/move results accurately;
+- retains per-track read/write quality, displays a cylinder/head health map, and
+  can selectively retry damaged ADF/ST track sides;
+- safely cancels reads, automatic detection, writes, conversion, retries,
+  maintenance, and blank-image creation using the Greaseweazle cleanup path;
+- offers Normal, Difficult Media, Archival, and raw Protected Software capture profiles without
+  requiring users to understand Greaseweazle command-line switches;
 - writes sector images using a content-detected or extension-guessed format,
   always asking for confirmation from the complete supported-format list;
 - writes SCP/A2R raw-flux images without lossy sector-format conversion; and
-- displays live cylinder, head, track and verification progress while writing.
-
-The blank-image control remains disabled until that workflow is implemented.
+- displays live cylinder, head, track and verification progress while writing;
+- inspects images offline, showing format, geometry, filesystem, volume,
+  integrity, size, and SHA-256;
+- atomically converts images while preserving the source and warning before a
+  potentially lossy raw-flux conversion;
+- compares captures by hash and changed track side, and optionally writes a
+  JSON capture report with device/profile/provenance information;
+- catalogues a local image folder and identifies duplicate captures;
+- monitors device removal/reconnection and supports physical drive A/B;
+- measures RPM and USB bandwidth and runs a confirmed cleaning-disk cycle; and
+- creates blank media images for every creatable format advertised by the
+  installed Greaseweazle, with ready-to-use Atari FAT12 or AmigaDOS OFS
+  filesystems where supported.
 
 ## Reading a disk
 
 1. Start the application and select **Read disk** to browse, or
-   **Extract disk to image** to retain the complete image.
+   choose **Disk → Extract Disk to Image** to retain the complete image.
 2. Choose **Detect automatically**, or **Choose format** if the disk family or
    exact geometry is already known. The generic **Atari ST** choice detects its
    360/400/440/720/800/880 KB subtype automatically.
+   Select Normal, Difficult Media, or Archival capture according to the disk's
+   condition and preservation needs.
 3. Automatic detection first reads only cylinder zero. Standard disks are then
    read directly as the correct image type; unusual disks fall back to a full
    lossless raw-flux capture.
-4. For extraction, choose where the detected `.adf`, `.st`, or raw `.scp`
-   image should be saved.
-5. **Extract disk to image** reports completion and returns to the main menu.
+4. For extraction, choose where the detected sector image or raw `.scp` image
+   should be saved.
+5. **Extract Disk to Image** opens a completion result in the main window.
+   Use the Back button to return to the start page.
    **Read disk** opens the image-backed directory browser; double-click folders
    to browse them.
 6. Select one or more items and either drag them into GNOME Files, or
@@ -55,8 +89,23 @@ when automatic detection is not appropriate.
 The known-format menu is generated from the installed Greaseweazle version. It
 contains every format advertised by `gw`, sorted into manufacturer submenus,
 and loads each format's cylinder and head geometry for accurate progress.
-Directory browsing currently supports Atari ST FAT12 and AmigaDOS OFS/FFS;
-other listed formats can be saved with **Extract disk to image**.
+The format menu and filesystem browser solve different parts of the job.
+Greaseweazle decodes the physical track format. GreaseWeazleGUI then needs a
+filesystem reader to show normal files and folders. Current readers support
+Atari TOS FAT12 (`.st`), compatible FAT12 sector images (`.img` and `.ima`),
+AmigaDOS OFS/FFS (`.adf`), Acorn DFS (`.ssd` and `.dsd`), and Commodore 1541
+DOS (`.d64`). Suitable PC, MS-DOS, and other FAT12 disks are therefore not
+limited to the Atari path. Other listed formats can still be captured,
+inspected, converted, and written, but the application will report that their
+filesystem is unsupported instead of showing an empty directory.
+
+See [Format and filesystem support](docs/FORMAT_SUPPORT.md) for the exact
+boundary between Greaseweazle media support and in-app directory browsing.
+
+The Protected Software profile bypasses sector decoding and records five raw
+revolutions to SCP. Permanent captures can also receive an adjacent
+`.capture.json` report containing SHA-256, format decision, capture profile,
+device details, and per-track results.
 
 ## Writing a disk
 
@@ -71,6 +120,41 @@ other listed formats can be saved with **Extract disk to image**.
 Raw SCP and A2R captures are offered as **raw flux (no conversion)** so unusual
 tracks and copy protection are retained when written back.
 
+## Creating a blank image
+
+1. Select **Create blank image** and choose a format from the complete,
+   manufacturer-grouped Greaseweazle list.
+2. Choose the image location. The app supplies the appropriate suffix and shows
+   live cylinder, head, and track progress while building the image.
+3. For Atari ST and AmigaDOS formats, leave **Create a ready-to-use filesystem**
+   enabled and optionally set a volume label. Other formats are created as
+   media-level blanks and clearly marked for initialisation on the target.
+
+## Offline image tools
+
+**Inspect or convert image** works without a connected drive. Inspection shows
+detected geometry, filesystem/volume, integrity, and SHA-256. It can compare a
+second capture or, when the `gw` host tools are installed, convert to any
+creatable supported format. Source images are never modified.
+
+**Image library** scans a chosen local folder read-only and groups duplicate
+images by SHA-256. Nothing is uploaded or stored outside that folder.
+
+## Drive maintenance
+
+Choose drive A or B from the Drive menu. RPM measurement takes five samples;
+USB bandwidth testing does not access a disk. Head cleaning requires an explicit
+confirmation and must only be used with a proper cleaning disk.
+
+## In-app help
+
+Choose **Help → User Guide** or press **F1**. The guide opens inside the main
+window and covers every application operation, filesystem and format behaviour,
+capture profiles, track-health interpretation, selective retry, safety rules,
+diagnostics, and keyboard controls. Its screenshots are captured from real,
+deterministic application states by `tools/capture_help_screenshots.sh` and do
+not contain local user files.
+
 ## Requirements
 
 - Python 3.10 or newer
@@ -81,19 +165,70 @@ On Debian or Ubuntu, the GNOME dependencies are normally provided by
 `python3-gi`, `gir1.2-gtk-4.0`, and `gir1.2-adw-1`. Install the Greaseweazle
 host tools according to the upstream Greaseweazle documentation.
 
+## Install a release
+
+GitHub Releases provide a native `.deb` installer for 64-bit Ubuntu 24.04 and
+Linux Mint 22. The installer includes GreaseWeazleGUI, the illustrated guide,
+Greaseweazle Host Tools 1.23, and the official Linux device-access rules. GTK,
+libadwaita, and Python are installed or updated through the distribution package
+manager.
+
+1. Download `GreaseWeazleGUI_VERSION_ubuntu24.04_amd64.deb` and `SHA256SUMS`
+   from the matching GitHub Release.
+2. From the download folder, run
+   `sha256sum --check --ignore-missing SHA256SUMS`.
+3. Install with
+   `sudo apt install ./GreaseWeazleGUI_VERSION_ubuntu24.04_amd64.deb`.
+4. Unplug and reconnect the Greaseweazle so the new device rule takes effect.
+5. Open **GreaseWeazleGUI** from the GNOME application grid, or run
+   `greaseweazle-gui` from a terminal.
+
+Remove it with `sudo apt remove greaseweazlegui`. User disk images, capture
+reports, and application data are not removed.
+
+The Python wheel is also attached for developers. It does not install GTK,
+libadwaita, the Greaseweazle host tools, desktop metadata, or device rules, so
+normal desktop users should install the `.deb` package.
+
+Maintainers create a release by updating the version in `pyproject.toml`,
+merging the release commit, and pushing a matching tag such as `v0.1.0`. The
+release workflow tests the exact tag, builds and installs the package on Ubuntu
+24.04, generates SHA-256 checksums, and publishes all files to GitHub Releases.
+
+To build the installer locally on Ubuntu 24.04, run
+`./packaging/build-deb.sh dist`. The Greaseweazle host-tool version is pinned in
+`packaging/greaseweazle-version.txt` for reproducible release review.
+
 ## Run from the source tree
 
 ```sh
-./run.sh
+./greaseweazlegui
 ```
 
 For UI development without attached hardware, opt in to the simulated device:
 
 ```sh
-GREASEWEAZLE_GUI_DEMO=1 ./run.sh
+GREASEWEAZLE_GUI_DEMO=1 ./greaseweazlegui
 ```
 
 The simulation is never enabled by default.
+
+When no hardware or host tools are available, choose **Use images offline**.
+Existing AmigaDOS, FAT12, Acorn DFS, and Commodore 1541 images can still be
+opened and browsed. Physical read, extract, and write controls remain disabled
+until device detection succeeds.
+
+Additional technical documentation:
+
+- [Current implementation status](docs/CURRENT_STATUS.md)
+- [Format and filesystem support](docs/FORMAT_SUPPORT.md)
+- [Release installation](docs/INSTALLATION.md)
+- [Maintainer release process](docs/RELEASING.md)
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for the ordered reliability, preservation, image,
+filesystem, browser, catalogue, and hardware milestones.
 
 ## Tests
 

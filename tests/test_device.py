@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 from greaseweazle_gui.device import detect_device, parse_info_output
 
-
 CONNECTED_OUTPUT = """\
 Host Tools: 1.23
 Device:
@@ -45,6 +44,7 @@ class DetectDeviceTests(unittest.TestCase):
 
         self.assertFalse(result.connected)
         self.assertIn("not installed", result.summary)
+        self.assertFalse(result.host_tools_available)
 
     @patch("greaseweazle_gui.device.subprocess.run")
     @patch("greaseweazle_gui.device.shutil.which", return_value="/usr/bin/gw")
@@ -77,7 +77,22 @@ class DetectDeviceTests(unittest.TestCase):
         self.assertIn("communicate", result.summary)
         self.assertEqual(result.diagnostic, "Permission denied")
 
+    @patch("greaseweazle_gui.device.subprocess.run")
+    @patch("greaseweazle_gui.device.shutil.which", return_value="/usr/bin/gw")
+    def test_keeps_valid_device_when_online_version_check_fails(
+        self, _which: object, run: object
+    ) -> None:
+        warning = "** FATAL ERROR:\nGitHub API Rate Limit exceeded"
+        run.return_value = subprocess.CompletedProcess(
+            ["/usr/bin/gw", "info"], 1, CONNECTED_OUTPUT, warning
+        )
+
+        result = detect_device()
+
+        self.assertTrue(result.connected)
+        self.assertEqual(result.model, "Greaseweazle V4")
+        self.assertIn("Rate Limit", result.diagnostic)
+
 
 if __name__ == "__main__":
     unittest.main()
-

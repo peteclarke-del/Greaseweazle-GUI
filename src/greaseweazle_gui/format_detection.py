@@ -2,18 +2,49 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import re
 import shutil
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 
 from .disk_formats import DISK_FORMATS, DiskFormat
 from .filesystems import DiskContents, FilesystemError, open_image
-
+from .operation import OperationController
 
 _TRACK_SECTORS = re.compile(r"^T(\d+)\.(\d+):.*?\((\d+)/(\d+) sectors\)")
+
+
+def _run_conversion(
+    command: list[str],
+    timeout: float,
+    controller: OperationController | None,
+) -> subprocess.CompletedProcess[str]:
+    if controller is None:
+        return subprocess.run(
+            command,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=timeout,
+        )
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    controller.register(process)
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
+        raise
+    finally:
+        controller.unregister(process)
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +110,7 @@ def probe_format(
     raw_probe: Path,
     work_directory: Path,
     candidates: tuple[DiskFormat, ...] = DISK_FORMATS,
+    controller: OperationController | None = None,
 ) -> ProbeResult:
     """Identify a standard disk from cylinder zero without a full capture."""
     executable = shutil.which("gw")
@@ -88,9 +120,11 @@ def probe_format(
     scored_candidates: list[tuple[float, int, DiskFormat, str]] = []
     diagnostics: list[str] = []
     for index, disk_format in enumerate(candidates, start=1):
+        if controller is not None and controller.cancelled:
+            return ProbeResult(None, 0, "Format detection was cancelled.")
         output_path = work_directory / f"initial-probe-{index}{disk_format.suffix}"
         try:
-            completed = subprocess.run(
+            completed = _run_conversion(
                 [
                     executable,
                     "convert",
@@ -101,10 +135,8 @@ def probe_format(
                     str(raw_probe),
                     str(output_path),
                 ],
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=60,
+                60,
+                controller,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             diagnostics.append(f"{disk_format.label}: {error}")
@@ -116,7 +148,9 @@ def probe_format(
         expected_probe = disk_format.heads * disk_format.sectors_per_track
         ratio = min(decoded / expected_probe, 1.0) if expected_probe else 0.0
         if completed.returncode != 0 or decoded == 0 or not output_path.is_file():
-            diagnostics.append(f"{disk_format.label}: no usable sectors on cylinder zero")
+            diagnostics.append(
+                f"{disk_format.label}: no usable sectors on cylinder zero"
+            )
             continue
 
         if disk_format.gw_format.startswith("atarist."):
@@ -148,12 +182,15 @@ def probe_format(
         return ProbeResult(
             None,
             0,
-            "\n".join(diagnostics) or "Cylinder zero did not identify a supported format.",
+            "\n".join(diagnostics)
+            or "Cylinder zero did not identify a supported format.",
         )
     scored_candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
     confidence, _decoded, disk_format, output = scored_candidates[0]
     if confidence < 0.75:
-        return ProbeResult(None, confidence, "The cylinder-zero result was not reliable.\n" + output)
+        return ProbeResult(
+            None, confidence, "The cylinder-zero result was not reliable.\n" + output
+        )
     return ProbeResult(disk_format, confidence, output)
 
 
@@ -180,11 +217,14 @@ def detect_format(
     work_directory: Path,
     progress: Callable[[DetectionProgress], None] | None = None,
     candidates: tuple[DiskFormat, ...] = DISK_FORMATS,
+    controller: OperationController | None = None,
 ) -> DetectionResult:
     """Try supported decoders and select the strongest valid filesystem."""
     executable = shutil.which("gw")
     if executable is None:
-        return DetectionResult(None, raw_image, None, 0, "The ‘gw’ tool is unavailable.")
+        return DetectionResult(
+            None, raw_image, None, 0, "The ‘gw’ tool is unavailable."
+        )
 
     # Probe a few representative tracks first. Fully decoding every candidate
     # makes format identification unnecessarily slow on multi-revolution SCPs.
@@ -192,11 +232,15 @@ def detect_format(
     diagnostics: list[str] = []
     total = len(candidates) + 1
     for index, disk_format in enumerate(candidates, start=1):
+        if controller is not None and controller.cancelled:
+            return DetectionResult(
+                None, raw_image, None, 0, "Format detection was cancelled.", "cancelled"
+            )
         if progress is not None:
             progress(DetectionProgress(index, total, disk_format.label))
         output_path = work_directory / f"probe-{index}{disk_format.suffix}"
         try:
-            completed = subprocess.run(
+            completed = _run_conversion(
                 [
                     executable,
                     "convert",
@@ -207,10 +251,8 @@ def detect_format(
                     str(raw_image),
                     str(output_path),
                 ],
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=120,
+                120,
+                controller,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             diagnostics.append(f"{disk_format.label}: {error}")
@@ -237,11 +279,20 @@ def detect_format(
     probes.sort(key=lambda candidate: (candidate[0], candidate[1]), reverse=True)
     best_ratio = 0.0
     for _probe_count, _probe_ratio, index, disk_format in probes:
+        if controller is not None and controller.cancelled:
+            return DetectionResult(
+                None,
+                raw_image,
+                None,
+                best_ratio,
+                "Format detection was cancelled.",
+                "cancelled",
+            )
         if progress is not None:
             progress(DetectionProgress(total, total, f"Confirming {disk_format.label}"))
         image_path = work_directory / f"detected-{index}{disk_format.suffix}"
         try:
-            completed = subprocess.run(
+            completed = _run_conversion(
                 [
                     executable,
                     "convert",
@@ -250,10 +301,8 @@ def detect_format(
                     str(raw_image),
                     str(image_path),
                 ],
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=120,
+                120,
+                controller,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             diagnostics.append(f"{disk_format.label} confirmation: {error}")

@@ -1,0 +1,6 @@
+#!/bin/sh
+
+application_lib=/usr/lib/greaseweazlegui
+export PYTHONPATH="${application_lib}${PYTHONPATH:+:${PYTHONPATH}}"
+
+exec /usr/bin/python3 "${application_lib}/gw_entry.py" "$@"

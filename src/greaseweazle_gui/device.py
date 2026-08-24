@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import os
 import re
 import shutil
 import subprocess
-from typing import Mapping
-
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 _FIELD_PATTERN = re.compile(r"^\s{2,}([^:]+):\s*(.*?)\s*$")
 
@@ -21,6 +20,7 @@ class DeviceProbeResult:
     summary: str
     details: Mapping[str, str] = field(default_factory=dict)
     diagnostic: str = ""
+    host_tools_available: bool = True
 
     @property
     def model(self) -> str:
@@ -56,7 +56,9 @@ def parse_info_output(output: str) -> DeviceProbeResult:
         if line.strip():
             device_lines.append(line)
 
-    if not device_lines or any(line.strip().lower() == "not found" for line in device_lines):
+    if not device_lines or any(
+        line.strip().lower() == "not found" for line in device_lines
+    ):
         return DeviceProbeResult(
             False,
             "No connected Greaseweazle was found.",
@@ -98,6 +100,7 @@ def detect_device(timeout: float = 8.0) -> DeviceProbeResult:
         return DeviceProbeResult(
             False,
             "The Greaseweazle host tool (‘gw’) is not installed or is not on PATH.",
+            host_tools_available=False,
         )
 
     try:
@@ -117,9 +120,17 @@ def detect_device(timeout: float = 8.0) -> DeviceProbeResult:
         return DeviceProbeResult(
             False,
             f"The Greaseweazle host tool could not be started: {error}",
+            host_tools_available=False,
         )
 
     output = "\n".join(part for part in (completed.stdout, completed.stderr) if part)
+    parsed = parse_info_output(output)
+    if parsed.connected:
+        # ``gw info`` can identify the local device and subsequently fail an
+        # optional online firmware-release check. A GitHub rate limit or
+        # network outage must not turn a valid local Device block into a false
+        # hardware-disconnected result. Keep the full output as diagnostics.
+        return parsed
     if completed.returncode != 0:
         return DeviceProbeResult(
             False,
@@ -127,5 +138,4 @@ def detect_device(timeout: float = 8.0) -> DeviceProbeResult:
             diagnostic=output.strip(),
         )
 
-    return parse_info_output(output)
-
+    return parsed

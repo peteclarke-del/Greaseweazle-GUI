@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
-import unittest
 
 from greaseweazle_gui.disk_formats import DISK_FORMATS, RAW_FLUX_FORMAT
 from greaseweazle_gui.write_disk import parse_write_progress, write_disk
@@ -54,9 +54,7 @@ class WriteDiskTests(unittest.TestCase):
 
     @patch("greaseweazle_gui.write_disk.subprocess.Popen")
     @patch("greaseweazle_gui.write_disk.shutil.which", return_value="/usr/bin/gw")
-    def test_failed_verification_is_reported(
-        self, _which: object, popen: Mock
-    ) -> None:
+    def test_failed_verification_is_reported(self, _which: object, popen: Mock) -> None:
         popen.return_value = fake_process(
             ["T2.0: Verify Failure: Retry #3\n", "Verification failed\n"],
             return_code=1,

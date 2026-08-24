@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-from pathlib import Path
 import struct
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from greaseweazle_gui.disk_formats import DISK_FORMATS
 from greaseweazle_gui.filesystems import DiskContents
-from greaseweazle_gui.format_detection import conversion_score, detect_format, probe_format
+from greaseweazle_gui.format_detection import (
+    conversion_score,
+    detect_format,
+    probe_format,
+)
 
 
 def track_output(cylinders: int, heads: int, recovered: int, total: int) -> str:
@@ -54,7 +58,9 @@ class DetectFormatTests(unittest.TestCase):
         contents = DiskContents("TEST", ())
         open_disk.return_value = contents
 
-        def convert(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        def convert(
+            command: list[str], **_kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             disk_format_name = command[command.index("--format") + 1]
             destination = Path(command[-1])
             if disk_format_name == "atarist.360":
@@ -87,7 +93,9 @@ class DetectFormatTests(unittest.TestCase):
     ) -> None:
         disk_format = DISK_FORMATS[3]
 
-        def convert(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        def convert(
+            command: list[str], **_kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
             boot = bytearray(512)
             struct.pack_into("<H", boot, 11, 512)
             boot[13] = 2
@@ -100,8 +108,7 @@ class DetectFormatTests(unittest.TestCase):
             struct.pack_into("<H", boot, 26, 2)
             Path(command[-1]).write_bytes(boot)
             output = "\n".join(
-                f"T0.{head}: IBM MFM (10/10 sectors) from Raw Flux"
-                for head in range(2)
+                f"T0.{head}: IBM MFM (10/10 sectors) from Raw Flux" for head in range(2)
             )
             return subprocess.CompletedProcess(command, 0, output, "")
 

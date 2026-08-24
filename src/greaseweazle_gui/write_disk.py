@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
-import threading
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 
 from .disk_formats import DiskFormat
+from .operation import OperationController
+from .subprocess_runner import run_streaming_process
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +20,7 @@ class WriteResult:
     summary: str
     diagnostic: str = ""
     verified: bool = False
+    progress: tuple[WriteProgress, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,59 +64,63 @@ def write_disk(
     disk_format: DiskFormat,
     timeout: float = 900,
     progress: Callable[[WriteProgress], None] | None = None,
+    controller: OperationController | None = None,
+    drive: str | None = None,
 ) -> WriteResult:
     executable = shutil.which("gw")
     if executable is None:
         return WriteResult(False, "The Greaseweazle host tool (‘gw’) is unavailable.")
     command = [executable, "write"]
+    if drive is not None:
+        command.extend(("--drive", drive))
     if disk_format.gw_format:
         command.extend(("--format", disk_format.gw_format))
     command.append(str(image_path))
-    environment = os.environ.copy()
-    environment["PYTHONUNBUFFERED"] = "1"
+    progress_updates: list[WriteProgress] = []
+
+    def process_line(line: str) -> None:
+        update = parse_write_progress(line, disk_format)
+        if update is not None:
+            progress_updates.append(update)
+            if progress is not None:
+                progress(update)
+
     try:
-        process = subprocess.Popen(
+        process_result = run_streaming_process(
             command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            env=environment,
+            timeout=timeout,
+            on_line=process_line,
+            controller=controller,
+            process_factory=subprocess.Popen,
         )
     except OSError as error:
         return WriteResult(False, f"Greaseweazle could not be started: {error}")
-
-    timed_out = threading.Event()
-
-    def stop() -> None:
-        if process.poll() is None:
-            timed_out.set()
-            process.kill()
-
-    timer = threading.Timer(timeout, stop)
-    timer.daemon = True
-    timer.start()
-    lines: list[str] = []
-    try:
-        if process.stdout is not None:
-            for raw_line in process.stdout:
-                line = raw_line.rstrip("\r\n")
-                lines.append(line)
-                update = parse_write_progress(line, disk_format)
-                if update is not None and progress is not None:
-                    progress(update)
-        return_code = process.wait()
-    finally:
-        timer.cancel()
-    output = "\n".join(lines).strip()
-    if timed_out.is_set():
-        return WriteResult(False, "Writing the disk timed out.", output)
-    if return_code != 0:
-        return WriteResult(False, "The disk could not be written or verified.", output)
+    output = process_result.output
+    if process_result.cancelled:
+        return WriteResult(
+            False,
+            "Writing was cancelled safely.",
+            output,
+            progress=tuple(progress_updates),
+        )
+    if process_result.timed_out:
+        return WriteResult(
+            False,
+            "Writing the disk timed out.",
+            output,
+            progress=tuple(progress_updates),
+        )
+    if process_result.return_code != 0:
+        return WriteResult(
+            False,
+            "The disk could not be written or verified.",
+            output,
+            progress=tuple(progress_updates),
+        )
     verified = "All tracks verified" in output
     summary = (
         "The disk was written and verified."
         if verified
         else "The disk was written. Greaseweazle reported that track verification was unavailable."
     )
-    return WriteResult(True, summary, output, verified)
+    return WriteResult(True, summary, output, verified, tuple(progress_updates))

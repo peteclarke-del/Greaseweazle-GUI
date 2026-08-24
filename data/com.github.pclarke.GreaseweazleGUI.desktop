@@ -1,6 +1,7 @@
 [Desktop Entry]
-Name=Greaseweazle
-Comment=Read and write floppy disk images
+Name=GreaseWeazleGUI
+GenericName=for linux
+Comment=Native Linux interface for Greaseweazle disk operations
 Exec=greaseweazle-gui
 Icon=drive-removable-media
 Terminal=false
