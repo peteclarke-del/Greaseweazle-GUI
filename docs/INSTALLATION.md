@@ -1,4 +1,4 @@
-# Installing GreaseWeazleGUI for linux
+# Installing Greaseweazle-GUI for linux
 
 ## Supported release package
 
@@ -18,12 +18,12 @@ Python 3.12, GTK 4, libadwaita, and PyGObject.
 4. Install the package and its distribution dependencies:
 
    ```sh
-   sudo apt install ./GreaseWeazleGUI_VERSION_ubuntu24.04_amd64.deb
+   sudo apt install ./Greaseweazle-GUI_VERSION_ubuntu24.04_amd64.deb
    ```
 
 5. Unplug and reconnect Greaseweazle. The package reloads the udev rules, but a
    physical reconnect is required for the new access tags to apply.
-6. Start **GreaseWeazleGUI** from the GNOME application grid.
+6. Start **Greaseweazle-GUI** from the GNOME application grid.
 
 The application can also be started from a terminal with
 `greaseweazle-gui`. Use **Help, Diagnostic Log** if hardware detection fails.
@@ -52,7 +52,7 @@ from the source tree after installing Python 3.10 or newer, GTK 4.8 or newer,
 libadwaita, PyGObject, and the upstream `gw` command.
 
 ```sh
-./greaseweazlegui
+./greaseweazle-gui
 ```
 
 Native packages for other distribution families are planned and will be listed

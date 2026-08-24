@@ -28,7 +28,7 @@ HELP_TOPICS = (
         "Getting Started",
         "Understand the workspace, menus, device state, and preservation rules.",
         "main-workspace.png",
-        "Main GreaseWeazleGUI workspace with Open Image and Read Disk buttons",
+        "Main Greaseweazle-GUI workspace with Open Image and Read Disk buttons",
         (
             HelpSection(
                 "Workspace layout",
@@ -335,7 +335,7 @@ HELP_TOPICS = (
         "Menu and Keyboard Reference",
         "Find every command and the browser shortcuts in one place.",
         "main-workspace.png",
-        "GreaseWeazleGUI application menu in the window header",
+        "Greaseweazle-GUI application menu in the window header",
         (
             HelpSection(
                 "Application menus",

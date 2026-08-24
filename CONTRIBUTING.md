@@ -1,4 +1,4 @@
-# Contributing to GreaseWeazleGUI
+# Contributing to Greaseweazle-GUI
 
 This application handles media that may be irreplaceable. Changes must preserve
 source images, make destructive actions explicit, and fail safely.
@@ -29,7 +29,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tests
 ruff check src tests
 ruff format --check src tests
-bash -n greaseweazlegui
+bash -n greaseweazle-gui
 bash -n packaging/*.sh
 desktop-file-validate data/com.github.pclarke.GreaseweazleGUI.desktop
 appstreamcli validate --no-net data/com.github.pclarke.GreaseweazleGUI.metainfo.xml

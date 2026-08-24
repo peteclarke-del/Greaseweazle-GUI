@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>com.github.pclarke.GreaseweazleGUI</id>
-  <name>GreaseWeazleGUI</name>
+  <name>Greaseweazle-GUI</name>
   <summary>for linux</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <developer id="github.com.peteclarke-del">
     <name>Pete Clarke</name>
   </developer>
-  <url type="homepage">https://github.com/peteclarke-del/GreaseWeaselGUI</url>
+  <url type="homepage">https://github.com/peteclarke-del/Greaseweazle-GUI</url>
   <description>
     <p>
       A native GNOME interface for reading, writing, creating, and browsing

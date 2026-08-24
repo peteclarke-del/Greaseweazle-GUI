@@ -1,6 +1,6 @@
 # Security policy
 
-GreaseWeazleGUI parses untrusted floppy images and can write to physical
+Greaseweazle-GUI parses untrusted floppy images and can write to physical
 media through an external hardware tool. Security reports are welcome even
 though the application is intended for a single local GNOME user.
 
@@ -15,7 +15,7 @@ though the application is intended for a single local GNOME user.
 ## Reporting a vulnerability
 
 Do not open a public issue for a suspected vulnerability. Use GitHub's private
-[Report a vulnerability](https://github.com/peteclarke-del/GreaseWeaselGUI/security/advisories/new)
+[Report a vulnerability](https://github.com/peteclarke-del/Greaseweazle-GUI/security/advisories/new)
 workflow. If that workflow is unavailable, contact the repository owner
 privately using the address on the maintainer's GitHub profile. Include the
 affected version or commit, host distribution, a minimal reproduction using

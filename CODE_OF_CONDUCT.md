@@ -1,6 +1,6 @@
 # Code of conduct
 
-GreaseWeazleGUI welcomes careful technical contributions from people with
+Greaseweazle-GUI welcomes careful technical contributions from people with
 different levels of experience. Discussion should improve the evidence and the
 software.
 

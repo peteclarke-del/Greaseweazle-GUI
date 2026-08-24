@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=GreaseWeazleGUI
+Name=Greaseweazle-GUI
 GenericName=for linux
 Comment=Native Linux interface for Greaseweazle disk operations
 Exec=greaseweazle-gui

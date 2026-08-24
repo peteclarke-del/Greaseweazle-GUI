@@ -15,7 +15,7 @@ from .window import MainWindow
 
 
 class GreaseweazleApplication(Adw.Application):
-    """GreaseWeazleGUI desktop application."""
+    """Greaseweazle-GUI desktop application."""
 
     def __init__(self) -> None:
         GLib.set_application_name(APPLICATION_NAME)

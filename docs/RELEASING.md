@@ -20,7 +20,7 @@ Only the repository maintainer publishes a release.
    python3 -m compileall -q src tests
    ruff check src tests
    ruff format --check src tests
-   bash -n greaseweazlegui packaging/*.sh tools/capture_help_screenshots.sh
+   bash -n greaseweazle-gui packaging/*.sh tools/capture_help_screenshots.sh
    desktop-file-validate data/com.github.pclarke.GreaseweazleGUI.desktop
    appstreamcli validate --no-net data/com.github.pclarke.GreaseweazleGUI.metainfo.xml
    ```
@@ -46,7 +46,7 @@ Merge the reviewed release pull request, then create and push a tag that exactly
 matches the project version:
 
 ```sh
-git tag -s v0.1.0 -m "GreaseWeazleGUI v0.1.0"
+git tag -s v0.1.0 -m "Greaseweazle-GUI v0.1.0"
 git push origin v0.1.0
 ```
 
