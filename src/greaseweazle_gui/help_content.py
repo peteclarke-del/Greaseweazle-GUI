@@ -155,7 +155,8 @@ HELP_TOPICS = (
             HelpSection(
                 "Supported filesystems",
                 (
-                    "The built-in bounded readers currently cover AmigaDOS OFS and FFS, Atari TOS FAT12, Acorn DFS SSD and DSD, and Commodore 1541 D64. Other image types can still be captured, inspected, converted, hashed, and written even when directory browsing is unavailable.",
+                    "Greaseweazle low-level format support and directory browsing are separate. The application can capture every format advertised by the installed host tools, but a normal file listing is possible only when the decoded image contains a filesystem understood by an installed reader.",
+                    "The built-in bounded readers cover AmigaDOS OFS and FFS, Atari TOS and compatible FAT12 IMG or IMA images, Acorn DFS SSD and DSD, and Commodore 1541 D64. This includes suitable PC, MS-DOS, and other FAT12 sector images. Other formats can still be captured, inspected, converted, hashed, and written without presenting an empty or invented directory.",
                 ),
             ),
         ),
@@ -310,6 +311,7 @@ HELP_TOPICS = (
                 "Startup and device problems",
                 (
                     "If host tools are unavailable, verify that gw is on PATH by running gw info in a terminal. If the host tools work but the device is absent, check USB data cable, permissions, power, and whether another program owns the serial port.",
+                    "The local Device block remains authoritative if gw identifies the hardware and a later online firmware-release check fails. Network outages or GitHub API rate limits are retained in diagnostics but do not disable local disk operations.",
                     "The source launcher removes inherited Snap and editor GTK module paths that can load incompatible libraries. The warning about an unknown gtk-modules key comes from the desktop GTK settings and does not prevent this application from running.",
                 ),
             ),

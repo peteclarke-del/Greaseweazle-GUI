@@ -22,3 +22,10 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 greaseweazle_gui = ["help_images/*.png"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["F", "I", "UP", "B", "SIM", "C4", "PIE", "PERF"]

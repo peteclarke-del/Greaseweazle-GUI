@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from greaseweazle_gui.create_image import (
@@ -53,7 +53,9 @@ class CreateImageTests(unittest.TestCase):
             self.assertTrue(result.succeeded)
             self.assertEqual(destination.read_bytes(), b"blank image")
         command = popen.call_args.args[0]
-        self.assertEqual(command[0:4], ["/usr/bin/gw", "convert", "--format", "atarist.720"])
+        self.assertEqual(
+            command[0:4], ["/usr/bin/gw", "convert", "--format", "atarist.720"]
+        )
         self.assertEqual(Path(command[4]).name, "empty.img")
         self.assertEqual(Path(command[5]).suffix, ".st")
 

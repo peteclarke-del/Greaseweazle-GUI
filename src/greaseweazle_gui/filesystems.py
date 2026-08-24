@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import struct
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-import struct
 
 
 class FilesystemError(ValueError):
@@ -48,17 +48,34 @@ def filesystem_readers() -> tuple[FilesystemReader, ...]:
     """Return the installed read-only filesystem plugins."""
     return (
         FilesystemReader(
-            "Atari TOS FAT12", (".st",), lambda data, _suffix: _Fat12Image(data).open()
+            "FAT12",
+            (".st", ".img", ".ima"),
+            lambda data, suffix: _Fat12Image(
+                data,
+                "Atari ST FAT12" if suffix == ".st" else "FAT12",
+                "Atari ST disk" if suffix == ".st" else "FAT12 disk",
+            ).open(),
         ),
         FilesystemReader(
             "AmigaDOS", (".adf",), lambda data, _suffix: _AmigaImage(data).open()
         ),
         FilesystemReader(
-            "Acorn DFS", (".ssd", ".dsd"), lambda data, suffix: _AcornDfsImage(data, suffix).open()
+            "Acorn DFS",
+            (".ssd", ".dsd"),
+            lambda data, suffix: _AcornDfsImage(data, suffix).open(),
         ),
         FilesystemReader(
-            "Commodore DOS", (".d64",), lambda data, _suffix: _CommodoreD64Image(data).open()
+            "Commodore DOS",
+            (".d64",),
+            lambda data, _suffix: _CommodoreD64Image(data).open(),
         ),
+    )
+
+
+def browsable_suffixes() -> frozenset[str]:
+    """Return image suffixes with an installed filesystem reader."""
+    return frozenset(
+        suffix for reader in filesystem_readers() for suffix in reader.suffixes
     )
 
 
@@ -69,7 +86,9 @@ def open_image(image_path: Path) -> DiskContents:
     for reader in filesystem_readers():
         if suffix in reader.suffixes:
             return reader.opener(data, suffix)
-    raise FilesystemError(f"Browsing {suffix or 'this image format'} is not supported yet.")
+    raise FilesystemError(
+        f"Browsing {suffix or 'this image format'} is not supported yet."
+    )
 
 
 def materialize_entries(entries: Iterable[ImageEntry], destination: Path) -> None:
@@ -132,13 +151,13 @@ class _AcornDfsImage:
             self.sides = (data,)
 
     def open(self) -> DiskContents:
-        opened = tuple(self._open_side(data, side) for side, data in enumerate(self.sides))
+        opened = tuple(
+            self._open_side(data, side) for side, data in enumerate(self.sides)
+        )
         if len(opened) == 1:
             return opened[0]
         entries = tuple(
-            ImageEntry(
-                f"Side {side}", True, children=contents.entries
-            )
+            ImageEntry(f"Side {side}", True, children=contents.entries)
             for side, contents in enumerate(opened)
         )
         labels = " / ".join(contents.volume_label for contents in opened)
@@ -155,10 +174,12 @@ class _AcornDfsImage:
         if not declared_sectors:
             declared_sectors = len(data) // self.SECTOR_SIZE
         if declared_sectors * self.SECTOR_SIZE > len(data):
-            raise FilesystemError(f"DFS side {side} declares sectors outside the image.")
-        title = (
-            catalogue_names[:8] + catalogue_meta[:4]
-        ).decode("latin-1", errors="replace").rstrip(" \0") or f"Acorn DFS side {side}"
+            raise FilesystemError(
+                f"DFS side {side} declares sectors outside the image."
+            )
+        title = (catalogue_names[:8] + catalogue_meta[:4]).decode(
+            "latin-1", errors="replace"
+        ).rstrip(" \0") or f"Acorn DFS side {side}"
         result: list[ImageEntry] = []
         used_names: set[str] = set()
         used_ranges: list[tuple[int, int]] = []
@@ -187,7 +208,9 @@ class _AcornDfsImage:
                     name,
                     False,
                     size=length,
-                    _reader=lambda begin=start, finish=end, source=data: source[begin:finish],
+                    _reader=lambda begin=start, finish=end, source=data: source[
+                        begin:finish
+                    ],
                 )
             )
         return DiskContents(title, tuple(result), "Acorn DFS")
@@ -219,9 +242,7 @@ class _CommodoreD64Image:
     @staticmethod
     def _petscii_name(raw: bytes) -> str:
         raw = raw.rstrip(b"\xa0\0 ")
-        text = "".join(
-            chr(byte) if 32 <= byte < 127 else "_" for byte in raw
-        )
+        text = "".join(chr(byte) if 32 <= byte < 127 else "_" for byte in raw)
         return _safe_name(text)
 
     def open(self) -> DiskContents:
@@ -264,7 +285,9 @@ class _CommodoreD64Image:
                     while current_track:
                         current = (current_track, current_sector)
                         if current in seen:
-                            raise FilesystemError(f"{filename} contains a sector-chain loop.")
+                            raise FilesystemError(
+                                f"{filename} contains a sector-chain loop."
+                            )
                         seen.add(current)
                         block = self._sector(current_track, current_sector)
                         next_track, next_sector = block[0], block[1]
@@ -282,7 +305,9 @@ class _CommodoreD64Image:
                 )
                 entry_count += 1
                 if entry_count > 144:
-                    raise FilesystemError("The Commodore directory is unreasonably large.")
+                    raise FilesystemError(
+                        "The Commodore directory is unreasonably large."
+                    )
         return DiskContents(label, tuple(entries), "Commodore 1541 DOS")
 
     def _chain_length(self, track: int, sector: int, filename: str) -> int:
@@ -300,10 +325,19 @@ class _CommodoreD64Image:
 
 
 class _Fat12Image:
-    def __init__(self, data: bytes) -> None:
+    def __init__(
+        self,
+        data: bytes,
+        format_label: str = "Atari ST FAT12",
+        default_label: str = "Atari ST disk",
+    ) -> None:
         self.data = data
+        self.format_label = format_label
+        self.default_label = default_label
         if len(data) < 512:
-            raise FilesystemError("The Atari ST image is too small to contain a filesystem.")
+            raise FilesystemError(
+                "The FAT12 image is too small to contain a filesystem."
+            )
         self.bytes_per_sector = struct.unpack_from("<H", data, 11)[0]
         self.sectors_per_cluster = data[13]
         self.reserved_sectors = struct.unpack_from("<H", data, 14)[0]
@@ -320,10 +354,14 @@ class _Fat12Image:
             or not self.root_entries
             or not self.sectors_per_fat
         ):
-            raise FilesystemError("The Atari ST image does not contain a valid FAT12 boot sector.")
+            raise FilesystemError(
+                "The image does not contain a valid FAT12 boot sector."
+            )
         declared_size = self.total_sectors * self.bytes_per_sector
         if not self.total_sectors or declared_size > len(data):
-            raise FilesystemError("The Atari ST image is truncated or has invalid geometry.")
+            raise FilesystemError(
+                "The FAT12 image is truncated or has invalid geometry."
+            )
 
         self.fat_offset = self.reserved_sectors * self.bytes_per_sector
         root_sectors = (
@@ -336,17 +374,19 @@ class _Fat12Image:
         self.data_offset = self.root_offset + root_sectors * self.bytes_per_sector
         fat_end = self.fat_offset + self.sectors_per_fat * self.bytes_per_sector
         if fat_end > len(data) or self.root_offset + self.root_size > len(data):
-            raise FilesystemError("The Atari ST filesystem structures are outside the image.")
-        self.fat = data[self.fat_offset:fat_end]
+            raise FilesystemError(
+                "The FAT12 filesystem structures are outside the image."
+            )
+        self.fat = data[self.fat_offset : fat_end]
 
     def open(self) -> DiskContents:
-        label = "Atari ST disk"
+        label = self.default_label
         boot_label = self.data[43:54].decode("latin-1", errors="replace").strip(" \0")
         if boot_label:
             label = boot_label
         root = self.data[self.root_offset : self.root_offset + self.root_size]
         entries = self._read_directory(root, set(), depth=0, current_cluster=None)
-        return DiskContents(label, entries, "Atari ST FAT12")
+        return DiskContents(label, entries, self.format_label)
 
     def _next_cluster(self, cluster: int) -> int:
         offset = cluster + cluster // 2
@@ -366,7 +406,9 @@ class _Fat12Image:
         ) + 1
         while 2 <= cluster < 0xFF8:
             if cluster in seen or cluster > maximum + 1:
-                raise FilesystemError("The disk contains a looping or invalid FAT chain.")
+                raise FilesystemError(
+                    "The disk contains a looping or invalid FAT chain."
+                )
             seen.add(cluster)
             chain.append(cluster)
             cluster = self._next_cluster(cluster)
@@ -381,7 +423,9 @@ class _Fat12Image:
             offset = self.data_offset + (cluster - 2) * cluster_size
             end = offset + cluster_size
             if end > len(self.data):
-                raise FilesystemError("A file extends beyond the end of the disk image.")
+                raise FilesystemError(
+                    "A file extends beyond the end of the disk image."
+                )
             chunks.append(self.data[offset:end])
         return b"".join(chunks)
 
@@ -432,14 +476,19 @@ class _Fat12Image:
                 if cluster == 0 or cluster == current_cluster:
                     continue
                 if cluster in visited:
-                    raise FilesystemError("The disk contains a recursive directory chain.")
+                    raise FilesystemError(
+                        "The disk contains a recursive directory chain."
+                    )
                 visited.add(cluster)
                 children = self._read_directory(
                     self._read_chain(cluster), visited, depth + 1, cluster
                 )
                 result.append(ImageEntry(name, True, children=children))
             else:
-                def read_file(first: int = cluster, length: int = size, filename: str = name) -> bytes:
+
+                def read_file(
+                    first: int = cluster, length: int = size, filename: str = name
+                ) -> bytes:
                     content = self._read_chain(first)
                     if length > len(content):
                         raise FilesystemError(
@@ -465,7 +514,10 @@ class _AmigaImage:
         self.block_count = len(data) // self.BLOCK_SIZE
         self.root_block = self.block_count // 2
         root = self._block(self.root_block)
-        if self._long(root, 0, signed=True) != 2 or self._long(root, 508, signed=True) != 1:
+        if (
+            self._long(root, 0, signed=True) != 2
+            or self._long(root, 508, signed=True) != 1
+        ):
             raise FilesystemError("The AmigaDOS root block is missing or damaged.")
 
     @staticmethod
@@ -502,7 +554,9 @@ class _AmigaImage:
             pointer = self._long(directory, 24 + index * 4)
             while pointer:
                 if pointer in seen:
-                    raise FilesystemError("The AmigaDOS directory contains a hash-chain loop.")
+                    raise FilesystemError(
+                        "The AmigaDOS directory contains a hash-chain loop."
+                    )
                 seen.add(pointer)
                 block = self._block(pointer)
                 children.append((pointer, block))
@@ -523,7 +577,9 @@ class _AmigaImage:
             )
             if secondary_type == 2:
                 if number in visited:
-                    raise FilesystemError("The AmigaDOS disk contains a recursive directory.")
+                    raise FilesystemError(
+                        "The AmigaDOS disk contains a recursive directory."
+                    )
                 visited.add(number)
                 children = self._read_directory(block, visited, depth + 1)
                 result.append(ImageEntry(name, True, children=children))
@@ -567,14 +623,18 @@ class _AmigaImage:
                 pointers = [
                     self._long(list_block, 24 + index * 4) for index in range(72)
                 ]
-                for pointer in reversed(pointers[-pointer_count:] if pointer_count else []):
+                for pointer in reversed(
+                    pointers[-pointer_count:] if pointer_count else []
+                ):
                     if pointer:
                         chunks.append(self._block(pointer))
                 extension = self._long(list_block, 504)
                 if not extension:
                     break
                 if extension in seen_extensions:
-                    raise FilesystemError("An AmigaDOS FFS extension block contains a loop.")
+                    raise FilesystemError(
+                        "An AmigaDOS FFS extension block contains a loop."
+                    )
                 seen_extensions.add(extension)
                 list_block = self._block(extension)
             content = b"".join(chunks)

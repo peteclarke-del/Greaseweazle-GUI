@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import shutil
 import subprocess
 import threading
+from dataclasses import dataclass
 
 from .operation import OperationController
 
@@ -42,7 +42,9 @@ def run_hardware_tool(
             text=True,
         )
     except OSError as error:
-        return HardwareToolResult(False, "Greaseweazle could not be started.", str(error))
+        return HardwareToolResult(
+            False, "Greaseweazle could not be started.", str(error)
+        )
     if controller is not None:
         controller.register(process)
     timed_out = threading.Event()

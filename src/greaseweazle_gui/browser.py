@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from pathlib import Path
 import shutil
 import threading
+from collections.abc import Callable, Sequence
+from pathlib import Path
 
 import gi
 
@@ -191,9 +191,7 @@ class DiskBrowser(Gtk.Box):
             action.connect("activate", callback)
             group.add_action(action)
             self._actions[name] = action
-        dual = Gio.SimpleAction.new_stateful(
-            "dual-pane", None, GLib.Variant("b", True)
-        )
+        dual = Gio.SimpleAction.new_stateful("dual-pane", None, GLib.Variant("b", True))
         dual.connect("activate", self._action_dual_pane)
         group.add_action(dual)
         self._actions["dual-pane"] = dual
@@ -262,9 +260,7 @@ class DiskBrowser(Gtk.Box):
         sort_menu.append_item(self._menu_item("Name", "manager.sort-name"))
         sort_menu.append_item(self._menu_item("Size", "manager.sort-size"))
         view_menu.append_submenu("Sort By", sort_menu)
-        view_menu.append_item(
-            self._menu_item("Reverse Order", "manager.reverse-sort")
-        )
+        view_menu.append_item(self._menu_item("Reverse Order", "manager.reverse-sort"))
         view_menu.append_item(
             self._menu_item("Show Hidden Files", "manager.show-hidden")
         )
@@ -352,9 +348,7 @@ class DiskBrowser(Gtk.Box):
             local_selected if local_active else disk_selected
         )
         available = not self._file_operation_busy
-        self._actions["cut"].set_enabled(
-            available and local_active and local_selected
-        )
+        self._actions["cut"].set_enabled(available and local_active and local_selected)
         self._actions["trash"].set_enabled(
             available and local_active and local_selected
         )
@@ -454,12 +448,8 @@ class DiskBrowser(Gtk.Box):
         dialog.add_response("skip", "Skip existing")
         dialog.add_response("keep-both", "Keep both")
         dialog.add_response("replace", "Replace")
-        dialog.set_response_appearance(
-            "keep-both", Adw.ResponseAppearance.SUGGESTED
-        )
-        dialog.set_response_appearance(
-            "replace", Adw.ResponseAppearance.DESTRUCTIVE
-        )
+        dialog.set_response_appearance("keep-both", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_response_appearance("replace", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.set_default_response("keep-both")
         dialog.set_close_response("cancel")
 
@@ -538,9 +528,7 @@ class DiskBrowser(Gtk.Box):
                     str(error),
                 )
                 return
-            GLib.idle_add(
-                self._finish_paste, sources, completed, cut, skipped, None
-            )
+            GLib.idle_add(self._finish_paste, sources, completed, cut, skipped, None)
 
         threading.Thread(target=worker, name="file-manager-paste", daemon=True).start()
 
@@ -676,9 +664,7 @@ class DiskBrowser(Gtk.Box):
         dialog.connect("response", respond)
         dialog.present()
 
-    def _action_properties(
-        self, _action: Gio.SimpleAction, _parameter: object
-    ) -> None:
+    def _action_properties(self, _action: Gio.SimpleAction, _parameter: object) -> None:
         if self._active_pane == "local":
             paths = self._local.selected_paths()
             if not paths:
@@ -773,26 +759,20 @@ class DiskBrowser(Gtk.Box):
         dialog.add_response("close", "Close")
         if report.damaged_count and self._on_retry_damaged is not None:
             dialog.add_response("retry", "Retry damaged tracks")
-            dialog.set_response_appearance(
-                "retry", Adw.ResponseAppearance.SUGGESTED
-            )
+            dialog.set_response_appearance("retry", Adw.ResponseAppearance.SUGGESTED)
             dialog.connect(
                 "response",
-                lambda _dialog, response: self._on_retry_damaged()
-                if response == "retry"
-                else None,
+                lambda _dialog, response: (
+                    self._on_retry_damaged() if response == "retry" else None
+                ),
             )
         dialog.present()
 
-    def _action_sort_name(
-        self, _action: Gio.SimpleAction, _parameter: object
-    ) -> None:
+    def _action_sort_name(self, _action: Gio.SimpleAction, _parameter: object) -> None:
         self._sort_key = "name"
         self._refresh_view_options()
 
-    def _action_sort_size(
-        self, _action: Gio.SimpleAction, _parameter: object
-    ) -> None:
+    def _action_sort_size(self, _action: Gio.SimpleAction, _parameter: object) -> None:
         self._sort_key = "size"
         self._refresh_view_options()
 
@@ -803,9 +783,7 @@ class DiskBrowser(Gtk.Box):
         action.set_state(GLib.Variant("b", self._sort_reverse))
         self._refresh_view_options()
 
-    def _action_show_hidden(
-        self, action: Gio.SimpleAction, _parameter: object
-    ) -> None:
+    def _action_show_hidden(self, action: Gio.SimpleAction, _parameter: object) -> None:
         self._show_hidden = not action.get_state().get_boolean()
         action.set_state(GLib.Variant("b", self._show_hidden))
         self._refresh_view_options()
@@ -820,9 +798,7 @@ class DiskBrowser(Gtk.Box):
         if self._on_done is not None:
             self._on_done()
 
-    def _action_dual_pane(
-        self, action: Gio.SimpleAction, _parameter: object
-    ) -> None:
+    def _action_dual_pane(self, action: Gio.SimpleAction, _parameter: object) -> None:
         self._dual_pane = not action.get_state().get_boolean()
         action.set_state(GLib.Variant("b", self._dual_pane))
         self._local.set_visible(self._dual_pane)
@@ -943,12 +919,16 @@ class DiskBrowser(Gtk.Box):
             self._list.append(empty_row)
 
         parts = [name for name, _entries in self._directory_stack if name]
-        volume = self.contents.volume_label or self.contents.format_label or "Disk image"
+        volume = (
+            self.contents.volume_label or self.contents.format_label or "Disk image"
+        )
         path = "/" if not parts else f"/{'/'.join(parts)}"
         self._path_label.set_text(f"{volume}:{path}")
         self._up_button.set_sensitive(len(self._directory_stack) > 1)
         noun = "item" if len(entries) == 1 else "items"
-        self._status.set_text(f"{len(entries)} {noun} • contents read directly from image")
+        self._status.set_text(
+            f"{len(entries)} {noun} • contents read directly from image"
+        )
 
     def _make_row(self, entry: ImageEntry) -> Gtk.ListBoxRow:
         row = Gtk.ListBoxRow()
@@ -961,7 +941,9 @@ class DiskBrowser(Gtk.Box):
             margin_start=12,
             margin_end=12,
         )
-        icon_name = "folder-symbolic" if entry.is_directory else "text-x-generic-symbolic"
+        icon_name = (
+            "folder-symbolic" if entry.is_directory else "text-x-generic-symbolic"
+        )
         content.append(Gtk.Image.new_from_icon_name(icon_name))
         content.append(Gtk.Label(label=entry.name, xalign=0, hexpand=True, ellipsize=3))
         if not entry.is_directory:
@@ -1001,7 +983,9 @@ class DiskBrowser(Gtk.Box):
             Gdk.FileList.new_from_list(files)
         )
         operation = "cut" if cut else "copy"
-        gnome_payload = operation + "\n" + "\n".join(file.get_uri() for file in files) + "\n"
+        gnome_payload = (
+            operation + "\n" + "\n".join(file.get_uri() for file in files) + "\n"
+        )
         gnome_provider = Gdk.ContentProvider.new_for_bytes(
             "x-special/gnome-copied-files",
             GLib.Bytes.new(gnome_payload.encode("utf-8")),
@@ -1033,7 +1017,9 @@ class DiskBrowser(Gtk.Box):
             return
         self._set_clipboard(paths, cut=False)
         noun = "item" if len(paths) == 1 else "items"
-        self._status.set_text(f"Copied {len(paths)} {noun} — paste into a folder in Files")
+        self._status.set_text(
+            f"Copied {len(paths)} {noun} — paste into a folder in Files"
+        )
 
     def _copy_from_menu(self, button: Gtk.Button) -> None:
         self._context_menu.popdown()
@@ -1050,7 +1036,12 @@ class DiskBrowser(Gtk.Box):
             self._list.unselect_all()
             self._list.select_row(row)
         rectangle = Gdk.Rectangle()
-        rectangle.x, rectangle.y, rectangle.width, rectangle.height = int(x), int(y), 1, 1
+        rectangle.x, rectangle.y, rectangle.width, rectangle.height = (
+            int(x),
+            int(y),
+            1,
+            1,
+        )
         self._context_menu.set_pointing_to(rectangle)
         self._context_menu.popup()
 

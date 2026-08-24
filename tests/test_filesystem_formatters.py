@@ -1,6 +1,6 @@
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from greaseweazle_gui.disk_formats import DISK_FORMATS, DiskFormat
 from greaseweazle_gui.filesystem_formatters import (
@@ -12,7 +12,9 @@ from greaseweazle_gui.filesystems import open_image
 
 class FilesystemFormatterTests(unittest.TestCase):
     def test_atari_image_is_immediately_browseable(self) -> None:
-        disk_format = next(item for item in DISK_FORMATS if item.gw_format == "atarist.800")
+        disk_format = next(
+            item for item in DISK_FORMATS if item.gw_format == "atarist.800"
+        )
         with tempfile.TemporaryDirectory() as folder:
             image = Path(folder) / "blank.st"
             image.write_bytes(b"\0" * (80 * 2 * 10 * 512))

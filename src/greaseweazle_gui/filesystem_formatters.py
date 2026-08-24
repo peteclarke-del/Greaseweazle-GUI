@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import struct
+from pathlib import Path
 
 from .disk_formats import DiskFormat
 
@@ -37,16 +37,18 @@ def initialise_filesystem(
 
 
 def _normalise_label(label: str, maximum: int) -> bytes:
-    cleaned = "".join(
-        character for character in label.strip().upper()
-        if character.isalnum() or character in " _-"
-    ) or "BLANK"
+    cleaned = (
+        "".join(
+            character
+            for character in label.strip().upper()
+            if character.isalnum() or character in " _-"
+        )
+        or "BLANK"
+    )
     return cleaned.encode("ascii", errors="replace")[:maximum]
 
 
-def _format_fat12(
-    image_path: Path, disk_format: DiskFormat, volume_label: str
-) -> None:
+def _format_fat12(image_path: Path, disk_format: DiskFormat, volume_label: str) -> None:
     data = bytearray(image_path.read_bytes())
     sector_size = 512
     expected = disk_format.track_count * disk_format.sectors_per_track * sector_size
@@ -98,10 +100,13 @@ def _format_fat12(
 
 def _amiga_checksum(block: bytearray, checksum_offset: int) -> None:
     struct.pack_into(">I", block, checksum_offset, 0)
-    total = sum(
-        struct.unpack_from(">I", block, offset)[0]
-        for offset in range(0, len(block), 4)
-    ) & 0xFFFFFFFF
+    total = (
+        sum(
+            struct.unpack_from(">I", block, offset)[0]
+            for offset in range(0, len(block), 4)
+        )
+        & 0xFFFFFFFF
+    )
     struct.pack_into(">I", block, checksum_offset, (-total) & 0xFFFFFFFF)
 
 

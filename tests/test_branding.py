@@ -1,8 +1,7 @@
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from greaseweazle_gui.branding import APPLICATION_NAME, APPLICATION_SUBTITLE
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 

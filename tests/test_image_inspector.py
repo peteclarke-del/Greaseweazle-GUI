@@ -1,6 +1,6 @@
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from greaseweazle_gui.disk_formats import DISK_FORMATS
@@ -10,7 +10,9 @@ from greaseweazle_gui.image_inspector import inspect_image
 
 class ImageInspectorTests(unittest.TestCase):
     def test_reports_filesystem_volume_and_hash(self) -> None:
-        disk_format = next(item for item in DISK_FORMATS if item.gw_format == "atarist.720")
+        disk_format = next(
+            item for item in DISK_FORMATS if item.gw_format == "atarist.720"
+        )
         with tempfile.TemporaryDirectory() as folder:
             image = Path(folder) / "blank.st"
             image.write_bytes(b"\0" * 737280)

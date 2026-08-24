@@ -1,5 +1,5 @@
-from importlib.resources import files
 import unittest
+from importlib.resources import files
 
 from greaseweazle_gui.help_content import HELP_TOPICS
 
@@ -7,9 +7,7 @@ from greaseweazle_gui.help_content import HELP_TOPICS
 class HelpContentTests(unittest.TestCase):
     def test_topics_have_unique_names_and_real_screenshots(self) -> None:
         self.assertGreaterEqual(len(HELP_TOPICS), 12)
-        self.assertEqual(
-            len({topic.slug for topic in HELP_TOPICS}), len(HELP_TOPICS)
-        )
+        self.assertEqual(len({topic.slug for topic in HELP_TOPICS}), len(HELP_TOPICS))
         image_folder = files("greaseweazle_gui").joinpath("help_images")
         for topic in HELP_TOPICS:
             with self.subTest(topic=topic.slug):

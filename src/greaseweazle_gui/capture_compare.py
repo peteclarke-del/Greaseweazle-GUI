@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
+from dataclasses import dataclass
 from pathlib import Path
 
 from .disk_formats import DiskFormat
@@ -30,11 +30,18 @@ def compare_captures(first: Path, second: Path) -> CaptureComparison:
     first_hash, second_hash = _digest(first_data), _digest(second_data)
     if first_hash == second_hash:
         return CaptureComparison(
-            True, True, (), first_hash, second_hash, "The captures are byte-for-byte identical."
+            True,
+            True,
+            (),
+            first_hash,
+            second_hash,
+            "The captures are byte-for-byte identical.",
         )
     first_guess = detect_image_format(first).disk_format
     second_guess = detect_image_format(second).disk_format
-    if not _same_fixed_geometry(first_guess, second_guess, len(first_data), len(second_data)):
+    if not _same_fixed_geometry(
+        first_guess, second_guess, len(first_data), len(second_data)
+    ):
         return CaptureComparison(
             False,
             False,

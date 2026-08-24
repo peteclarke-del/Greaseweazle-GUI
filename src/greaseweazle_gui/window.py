@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import threading
-import tempfile
 import shutil
-from datetime import datetime
+import tempfile
+import threading
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 import gi
@@ -15,19 +15,19 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
-from .browser import DiskBrowser
 from .branding import APPLICATION_NAME, APPLICATION_SUBTITLE
-from .capture_profiles import CAPTURE_PROFILES
-from .capture_metadata import write_capture_report
+from .browser import DiskBrowser
 from .capture_compare import CaptureComparison, compare_captures
+from .capture_metadata import write_capture_report
+from .capture_profiles import CAPTURE_PROFILES
 from .catalogue import CatalogueEntry, scan_catalogue
+from .convert_image import ConvertImageResult, convert_image
 from .create_image import (
     NON_CREATABLE_FORMATS,
     CreateImageProgress,
     CreateImageResult,
     create_blank_image,
 )
-from .convert_image import ConvertImageResult, convert_image
 from .device import DeviceProbeResult, detect_device
 from .disk_formats import (
     AUTO_DETECT_FORMAT,
@@ -37,8 +37,14 @@ from .disk_formats import (
     RAW_FLUX_FORMAT,
     DiskFormat,
 )
-from .filesystems import DiskContents, FilesystemError, ImageEntry, open_image
 from .filesystem_formatters import filesystem_support_name
+from .filesystems import (
+    DiskContents,
+    FilesystemError,
+    ImageEntry,
+    browsable_suffixes,
+    open_image,
+)
 from .format_catalog import (
     format_menu_label,
     grouped_formats,
@@ -51,10 +57,10 @@ from .format_detection import (
     detect_format,
     probe_format,
 )
-from .image_detection import ImageFormatGuess, detect_image_format
-from .image_inspector import ImageInspection, inspect_image
 from .hardware_tools import HardwareToolResult, run_hardware_tool
 from .help_view import HelpView
+from .image_detection import ImageFormatGuess, detect_image_format
+from .image_inspector import ImageInspection, inspect_image
 from .operation import OperationController
 from .read_disk import ReadProgress, ReadResult, read_disk
 from .retry_tracks import RetryTracksResult, retry_damaged_tracks
@@ -124,17 +130,11 @@ class MainWindow(Adw.ApplicationWindow):
         else:
             self._show_dashboard()
 
-    def _visible_page_changed(
-        self, _stack: Gtk.Stack, _property: object
-    ) -> None:
+    def _visible_page_changed(self, _stack: Gtk.Stack, _property: object) -> None:
         name = self._stack.get_visible_child_name()
         self._window_title.set_title(APPLICATION_NAME)
         self._window_title.set_subtitle(APPLICATION_SUBTITLE)
-        if name == "dashboard":
-            self._back_button.set_visible(False)
-        elif name == "checking":
-            self._back_button.set_visible(False)
-        elif name == "reading":
+        if name == "dashboard" or name == "checking" or name == "reading":
             self._back_button.set_visible(False)
         elif name == "browser":
             self._back_button.set_visible(True)
@@ -162,7 +162,14 @@ class MainWindow(Adw.ApplicationWindow):
             action.connect("activate", lambda _action, _parameter, fn=callback: fn())
             self.add_action(action)
             self._window_actions[name] = action
-        for name in ("read-disk", "extract-image", "write-disk", "rpm", "bandwidth", "clean"):
+        for name in (
+            "read-disk",
+            "extract-image",
+            "write-disk",
+            "rpm",
+            "bandwidth",
+            "clean",
+        ):
             self._window_actions[name].set_enabled(False)
         self._window_actions["create-image"].set_enabled(False)
 
@@ -199,9 +206,7 @@ class MainWindow(Adw.ApplicationWindow):
         drive_choice = Gio.Menu()
         for drive_name in ("A", "B"):
             item = Gio.MenuItem.new(f"Drive {drive_name}", None)
-            item.set_action_and_target_value(
-                "win.drive", GLib.Variant("s", drive_name)
-            )
+            item.set_action_and_target_value("win.drive", GLib.Variant("s", drive_name))
             drive_choice.append_item(item)
         drive_menu.append_section(None, drive_choice)
         drive_menu.append("Measure Spindle Speed", "win.rpm")
@@ -263,9 +268,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._cancel_operation_button = Gtk.Button(
             label="Cancel operation", halign=Gtk.Align.CENTER, visible=False
         )
-        self._cancel_operation_button.connect(
-            "clicked", self._cancel_current_operation
-        )
+        self._cancel_operation_button.connect("clicked", self._cancel_current_operation)
         progress_box.append(self._cancel_operation_button)
         self._reading_page.set_child(progress_box)
         return self._reading_page
@@ -405,7 +408,9 @@ class MainWindow(Adw.ApplicationWindow):
             return
         folder = Path(selected_path)
         self._reading_page.set_title("Building image catalogue…")
-        self._reading_page.set_description("Images are inspected read-only; no database is uploaded.")
+        self._reading_page.set_description(
+            "Images are inspected read-only; no database is uploaded."
+        )
         self._read_progress.set_text("")
         self._progress_track.set_text(str(folder))
         self._progress_sectors.set_text("Hashing and detecting image formats…")
@@ -424,14 +429,18 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _finish_catalogue_error(self, diagnostic: str) -> bool:
         self._stack.set_visible_child_name("dashboard")
-        self._show_error("Unable to build catalogue", "The folder could not be scanned.", diagnostic)
+        self._show_error(
+            "Unable to build catalogue", "The folder could not be scanned.", diagnostic
+        )
         return GLib.SOURCE_REMOVE
 
     def _finish_catalogue(
         self, folder: Path, entries: tuple[CatalogueEntry, ...]
     ) -> bool:
         duplicates = sum(entry.duplicate_count > 1 for entry in entries)
-        listing = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE)
+        listing = Gtk.ListBox(
+            css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE
+        )
         for entry in entries:
             row = Adw.ActionRow(
                 title=entry.path.name,
@@ -440,7 +449,9 @@ class MainWindow(Adw.ApplicationWindow):
                 ),
             )
             if entry.duplicate_count > 1:
-                badge = Gtk.Label(label=f"{entry.duplicate_count} copies", css_classes=["warning"])
+                badge = Gtk.Label(
+                    label=f"{entry.duplicate_count} copies", css_classes=["warning"]
+                )
                 row.add_suffix(badge)
             row.set_tooltip_text(f"{entry.path}\nSHA-256 {entry.sha256}")
             listing.append(row)
@@ -468,15 +479,18 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.set_response_appearance("clean", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.connect(
             "response",
-            lambda _dialog, response: self._start_hardware_tool("clean")
-            if response == "clean"
-            else None,
+            lambda _dialog, response: (
+                self._start_hardware_tool("clean") if response == "clean" else None
+            ),
         )
         dialog.present()
 
     def _start_hardware_tool(self, action: str) -> None:
         labels = {
-            "rpm": ("Measuring drive speed…", "Keep a disk inserted while RPM is measured."),
+            "rpm": (
+                "Measuring drive speed…",
+                "Keep a disk inserted while RPM is measured.",
+            ),
             "bandwidth": ("Testing USB bandwidth…", "No disk access is performed."),
             "clean": ("Cleaning drive heads…", "Keep the cleaning disk inserted."),
         }
@@ -535,10 +549,26 @@ class MainWindow(Adw.ApplicationWindow):
         image_filter = Gtk.FileFilter()
         image_filter.set_name("Disk images")
         for pattern in (
-            "*.adf", "*.st", "*.scp", "*.a2r", "*.img", "*.ima",
-            "*.ssd", "*.dsd", "*.adm", "*.ads", "*.adl", "*.do",
-            "*.po", "*.d64", "*.d71", "*.d81", "*.d1m", "*.d2m",
-            "*.d4m", "*.sf7",
+            "*.adf",
+            "*.st",
+            "*.scp",
+            "*.a2r",
+            "*.img",
+            "*.ima",
+            "*.ssd",
+            "*.dsd",
+            "*.adm",
+            "*.ads",
+            "*.adl",
+            "*.do",
+            "*.po",
+            "*.d64",
+            "*.d71",
+            "*.d81",
+            "*.d1m",
+            "*.d2m",
+            "*.d4m",
+            "*.sf7",
         ):
             image_filter.add_pattern(pattern)
         chooser.add_filter(image_filter)
@@ -555,7 +585,9 @@ class MainWindow(Adw.ApplicationWindow):
         selected = chooser.get_file()
         selected_path = selected.get_path() if selected is not None else None
         if selected_path is None:
-            self._show_error("Choose a local image", "Inspection requires a local file.")
+            self._show_error(
+                "Choose a local image", "Inspection requires a local file."
+            )
             return
         image_path = Path(selected_path)
         self._reading_page.set_title("Inspecting disk image…")
@@ -571,9 +603,7 @@ class MainWindow(Adw.ApplicationWindow):
             try:
                 inspection = inspect_image(image_path)
             except OSError as error:
-                GLib.idle_add(
-                    self._finish_inspection_error, image_path, str(error)
-                )
+                GLib.idle_add(self._finish_inspection_error, image_path, str(error))
                 return
             GLib.idle_add(self._finish_inspection, inspection)
 
@@ -582,7 +612,9 @@ class MainWindow(Adw.ApplicationWindow):
     def _finish_inspection_error(self, image_path: Path, diagnostic: str) -> bool:
         self._stack.set_visible_child_name("dashboard")
         self._show_error(
-            "Unable to inspect image", f"{image_path.name} could not be read.", diagnostic
+            "Unable to inspect image",
+            f"{image_path.name} could not be read.",
+            diagnostic,
         )
         return GLib.SOURCE_REMOVE
 
@@ -605,7 +637,9 @@ class MainWindow(Adw.ApplicationWindow):
         )
         grid = Gtk.Grid(column_spacing=12, row_spacing=8, margin_top=8)
         for row, (label, value) in enumerate(rows):
-            grid.attach(Gtk.Label(label=label, xalign=1, css_classes=["heading"]), 0, row, 1, 1)
+            grid.attach(
+                Gtk.Label(label=label, xalign=1, css_classes=["heading"]), 0, row, 1, 1
+            )
             value_label = Gtk.Label(label=value, xalign=0, selectable=True, wrap=True)
             value_label.set_max_width_chars(60)
             grid.attach(value_label, 1, row, 1, 1)
@@ -655,7 +689,9 @@ class MainWindow(Adw.ApplicationWindow):
             return
         second = Path(selected_path)
         self._reading_page.set_title("Comparing captures…")
-        self._reading_page.set_description("Hashing both images and comparing track sides.")
+        self._reading_page.set_description(
+            "Hashing both images and comparing track sides."
+        )
         self._progress_track.set_text(f"{first.name} ↔ {second.name}")
         self._progress_sectors.set_text("The images are read-only")
         self._progress_message.set_text("")
@@ -674,14 +710,17 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _finish_comparison_error(self, diagnostic: str) -> bool:
         self._stack.set_visible_child_name("dashboard")
-        self._show_error("Unable to compare captures", "An image could not be read.", diagnostic)
+        self._show_error(
+            "Unable to compare captures", "An image could not be read.", diagnostic
+        )
         return GLib.SOURCE_REMOVE
 
     def _finish_comparison(self, comparison: CaptureComparison) -> bool:
         body = comparison.summary
         if comparison.changed_tracks:
             tracks = ", ".join(
-                f"{cylinder}.{head}" for cylinder, head in comparison.changed_tracks[:40]
+                f"{cylinder}.{head}"
+                for cylinder, head in comparison.changed_tracks[:40]
             )
             if len(comparison.changed_tracks) > 40:
                 tracks += f", … and {len(comparison.changed_tracks) - 40} more"
@@ -735,8 +774,7 @@ class MainWindow(Adw.ApplicationWindow):
             if response != "continue" or selected[0] is None:
                 return
             target = next(
-                item for item in supported_formats()
-                if item.gw_format == selected[0]
+                item for item in supported_formats() if item.gw_format == selected[0]
             )
             self._choose_conversion_location(inspection.path, target)
 
@@ -771,7 +809,9 @@ class MainWindow(Adw.ApplicationWindow):
         selected = chooser.get_file()
         selected_path = selected.get_path() if selected is not None else None
         if selected_path is None:
-            self._show_error("Choose a local folder", "Conversion requires a local path.")
+            self._show_error(
+                "Choose a local folder", "Conversion requires a local path."
+            )
             return
         destination = Path(selected_path)
         if destination.suffix.lower() != target_format.suffix:
@@ -782,10 +822,14 @@ class MainWindow(Adw.ApplicationWindow):
         self, source: Path, destination: Path, target_format: DiskFormat
     ) -> None:
         self._reading_page.set_title(f"Converting to {target_format.label}…")
-        self._reading_page.set_description(f"Saving {destination.name}; the source is unchanged.")
+        self._reading_page.set_description(
+            f"Saving {destination.name}; the source is unchanged."
+        )
         self._read_progress.set_fraction(0)
         self._read_progress.set_text("0%")
-        self._progress_track.set_text(f"Preparing {target_format.track_count} track sides…")
+        self._progress_track.set_text(
+            f"Preparing {target_format.track_count} track sides…"
+        )
         self._progress_sectors.set_text("Converting image")
         self._progress_message.set_text("")
         self._stack.set_visible_child_name("reading")
@@ -805,20 +849,21 @@ class MainWindow(Adw.ApplicationWindow):
                 )
             except Exception as error:
                 result = ConvertImageResult(
-                    False, "Image conversion stopped unexpectedly.",
+                    False,
+                    "Image conversion stopped unexpectedly.",
                     f"{type(error).__name__}: {error}",
                 )
             GLib.idle_add(self._finish_conversion, result, destination)
 
         threading.Thread(target=worker, name="image-converter", daemon=True).start()
 
-    def _finish_conversion(
-        self, result: ConvertImageResult, destination: Path
-    ) -> bool:
+    def _finish_conversion(self, result: ConvertImageResult, destination: Path) -> bool:
         self._end_cancellable_operation()
         if not result.succeeded:
             self._show_dashboard()
-            self._show_error("Unable to convert image", result.summary, result.diagnostic)
+            self._show_error(
+                "Unable to convert image", result.summary, result.diagnostic
+            )
             return GLib.SOURCE_REMOVE
         self._show_result(
             "Conversion Complete",
@@ -842,6 +887,8 @@ class MainWindow(Adw.ApplicationWindow):
         image_filter.add_pattern("*.ssd")
         image_filter.add_pattern("*.dsd")
         image_filter.add_pattern("*.d64")
+        image_filter.add_pattern("*.img")
+        image_filter.add_pattern("*.ima")
         chooser.add_filter(image_filter)
         all_files = Gtk.FileFilter()
         all_files.set_name("All files")
@@ -932,9 +979,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         return GLib.SOURCE_REMOVE
 
-    def _ask_read_format(
-        self, button: Gtk.Button | None, *, save_image: bool
-    ) -> None:
+    def _ask_read_format(self, button: Gtk.Button | None, *, save_image: bool) -> None:
         dialog = Adw.MessageDialog.new(
             self,
             "Do you know the disk format?",
@@ -981,9 +1026,7 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.set_extra_child(profile_box)
 
         def respond(_dialog: Adw.MessageDialog, response: str) -> None:
-            self._capture_profile = CAPTURE_PROFILES[
-                profile_choice.get_selected()
-            ]
+            self._capture_profile = CAPTURE_PROFILES[profile_choice.get_selected()]
             self._save_capture_report = capture_report.get_active()
             if response == "choose":
                 self._choose_disk_format(button, save_image=save_image)
@@ -1013,10 +1056,26 @@ class MainWindow(Adw.ApplicationWindow):
         image_filter = Gtk.FileFilter()
         image_filter.set_name("Floppy disk images")
         for pattern in (
-            "*.adf", "*.st", "*.scp", "*.a2r", "*.img", "*.ima",
-            "*.ssd", "*.dsd", "*.adm", "*.ads", "*.adl", "*.do",
-            "*.po", "*.d64", "*.d71", "*.d81", "*.d1m", "*.d2m",
-            "*.d4m", "*.sf7",
+            "*.adf",
+            "*.st",
+            "*.scp",
+            "*.a2r",
+            "*.img",
+            "*.ima",
+            "*.ssd",
+            "*.dsd",
+            "*.adm",
+            "*.ads",
+            "*.adl",
+            "*.do",
+            "*.po",
+            "*.d64",
+            "*.d71",
+            "*.d81",
+            "*.d1m",
+            "*.d2m",
+            "*.d4m",
+            "*.sf7",
         ):
             image_filter.add_pattern(pattern)
         chooser.add_filter(image_filter)
@@ -1057,8 +1116,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         def format_selected(format_name: str) -> None:
             disk_format = next(
-                item for item in supported_formats()
-                if item.gw_format == format_name
+                item for item in supported_formats() if item.gw_format == format_name
             )
             filesystem = filesystem_support_name(disk_format)
             initialise.set_sensitive(filesystem is not None)
@@ -1094,11 +1152,7 @@ class MainWindow(Adw.ApplicationWindow):
             if response != "choose" or selected[0] is None:
                 return
             disk_format = next(
-                (
-                    item
-                    for item in supported_formats()
-                    if item.gw_format == selected[0]
-                ),
+                (item for item in supported_formats() if item.gw_format == selected[0]),
                 None,
             )
             if disk_format is not None:
@@ -1123,9 +1177,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         chooser.set_current_name(f"blank{disk_format.suffix}")
         image_filter = Gtk.FileFilter()
-        image_filter.set_name(
-            f"{disk_format.label} image (*{disk_format.suffix})"
-        )
+        image_filter.set_name(f"{disk_format.label} image (*{disk_format.suffix})")
         image_filter.add_pattern(f"*{disk_format.suffix}")
         chooser.add_filter(image_filter)
         chooser.connect(
@@ -1160,9 +1212,7 @@ class MainWindow(Adw.ApplicationWindow):
         destination = Path(selected_path)
         if destination.suffix.lower() != disk_format.suffix:
             destination = destination.with_suffix(disk_format.suffix)
-        self._start_blank_creation(
-            destination, disk_format, initialise, volume_label
-        )
+        self._start_blank_creation(destination, disk_format, initialise, volume_label)
 
     def _start_blank_creation(
         self,
@@ -1207,13 +1257,9 @@ class MainWindow(Adw.ApplicationWindow):
                     "Creating the image stopped because of an unexpected error.",
                     f"{type(error).__name__}: {error}",
                 )
-            GLib.idle_add(
-                self._finish_blank_creation, result, destination, disk_format
-            )
+            GLib.idle_add(self._finish_blank_creation, result, destination, disk_format)
 
-        threading.Thread(
-            target=worker, name="blank-image-creator", daemon=True
-        ).start()
+        threading.Thread(target=worker, name="blank-image-creator", daemon=True).start()
 
     def _update_blank_progress(self, update: CreateImageProgress) -> bool:
         self._read_progress.set_fraction(update.fraction)
@@ -1278,11 +1324,11 @@ class MainWindow(Adw.ApplicationWindow):
             guess = detect_image_format(image_path)
             GLib.idle_add(self._confirm_write_format, image_path, guess)
 
-        threading.Thread(target=worker, name="image-format-detection", daemon=True).start()
+        threading.Thread(
+            target=worker, name="image-format-detection", daemon=True
+        ).start()
 
-    def _confirm_write_format(
-        self, image_path: Path, guess: ImageFormatGuess
-    ) -> bool:
+    def _confirm_write_format(self, image_path: Path, guess: ImageFormatGuess) -> bool:
         self._stack.set_visible_child_name("dashboard")
         if guess.method == "error":
             self._show_error("Unable to open image", guess.explanation)
@@ -1294,7 +1340,9 @@ class MainWindow(Adw.ApplicationWindow):
                 "from the complete Greaseweazle list."
             )
         else:
-            finding = f"Suggested format: {guess.disk_format.label}\n{guess.explanation}"
+            finding = (
+                f"Suggested format: {guess.disk_format.label}\n{guess.explanation}"
+            )
         dialog = Adw.MessageDialog.new(
             self,
             "Confirm disk format",
@@ -1328,8 +1376,7 @@ class MainWindow(Adw.ApplicationWindow):
             if format_name == "__raw_flux__":
                 disk_format = (
                     guess.disk_format
-                    if guess.disk_format is not None
-                    and not guess.disk_format.gw_format
+                    if guess.disk_format is not None and not guess.disk_format.gw_format
                     else RAW_FLUX_FORMAT
                 )
             else:
@@ -1374,10 +1421,9 @@ class MainWindow(Adw.ApplicationWindow):
 
         def worker() -> None:
             try:
+
                 def report_progress(update: WriteProgress) -> None:
-                    GLib.idle_add(
-                        self._update_write_progress, update, can_verify
-                    )
+                    GLib.idle_add(self._update_write_progress, update, can_verify)
 
                 result = write_disk(
                     image_path,
@@ -1396,9 +1442,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         threading.Thread(target=worker, name="disk-writer", daemon=True).start()
 
-    def _update_write_progress(
-        self, update: WriteProgress, can_verify: bool
-    ) -> bool:
+    def _update_write_progress(self, update: WriteProgress, can_verify: bool) -> bool:
         self._read_progress.set_fraction(update.fraction)
         self._read_progress.set_text(f"{update.fraction * 100:.1f}%")
         self._progress_track.set_text(
@@ -1424,11 +1468,11 @@ class MainWindow(Adw.ApplicationWindow):
                 dialog.add_response("health", "View track report")
                 dialog.connect(
                     "response",
-                    lambda _dialog, response: self._show_health_report(
-                        "Write verification", health_report
-                    )
-                    if response == "health"
-                    else None,
+                    lambda _dialog, response: (
+                        self._show_health_report("Write verification", health_report)
+                        if response == "health"
+                        else None
+                    ),
                 )
             return GLib.SOURCE_REMOVE
         actions: list[Gtk.Widget] = []
@@ -1446,9 +1490,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         return GLib.SOURCE_REMOVE
 
-    def _start_auto_read(
-        self, _button: Gtk.Button | None, *, save_image: bool
-    ) -> None:
+    def _start_auto_read(self, _button: Gtk.Button | None, *, save_image: bool) -> None:
         self._start_detected_read(_button, save_image=save_image)
 
     def _start_detected_read(
@@ -1474,6 +1516,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         def worker() -> None:
             try:
+
                 def report_read(update: ReadProgress) -> None:
                     GLib.idle_add(self._update_read_progress, update)
 
@@ -1539,9 +1582,7 @@ class MainWindow(Adw.ApplicationWindow):
                                 "The disk appears protected or nonstandard, but its raw capture failed.",
                                 raw_result.diagnostic,
                             )
-                            GLib.idle_add(
-                                self._finish_read, failed, temporary, None
-                            )
+                            GLib.idle_add(self._finish_read, failed, temporary, None)
                             return
                         detection = DetectionResult(
                             None,
@@ -1659,10 +1700,8 @@ class MainWindow(Adw.ApplicationWindow):
     ) -> bool:
         self._reading_page.set_title("Preserving protected or nonstandard disk…")
         self._reading_page.set_description(
-            (
-                f"The disk resembles {disk_format.label}, but its filesystem is not "
-                "a normal browseable layout. Capturing raw flux without altering it."
-            )
+            f"The disk resembles {disk_format.label}, but its filesystem is not "
+            "a normal browseable layout. Capturing raw flux without altering it."
         )
         self._read_progress.set_fraction(0)
         self._read_progress.set_text("0%")
@@ -1689,9 +1728,15 @@ class MainWindow(Adw.ApplicationWindow):
         fraction = update.current / update.total
         self._read_progress.set_fraction(fraction)
         self._read_progress.set_text(f"{update.current} of {update.total}")
-        label = update.label if update.label.startswith("Confirming ") else f"Trying {update.label}"
+        label = (
+            update.label
+            if update.label.startswith("Confirming ")
+            else f"Trying {update.label}"
+        )
         self._progress_track.set_text(label)
-        self._progress_sectors.set_text("Checking decoded sectors and filesystem signature")
+        self._progress_sectors.set_text(
+            "Checking decoded sectors and filesystem signature"
+        )
         self._progress_message.set_text("")
         return GLib.SOURCE_REMOVE
 
@@ -1953,9 +1998,7 @@ class MainWindow(Adw.ApplicationWindow):
                 submenu.append_section(None, automatic)
             format_section = Gio.Menu()
             for disk_format in formats:
-                item = Gio.MenuItem.new(
-                    format_menu_label(disk_format.gw_format), None
-                )
+                item = Gio.MenuItem.new(format_menu_label(disk_format.gw_format), None)
                 item.set_action_and_target_value(
                     "format.select", GLib.Variant("s", disk_format.gw_format)
                 )
@@ -1972,9 +2015,7 @@ class MainWindow(Adw.ApplicationWindow):
             menu.append_submenu("Raw formats", raw_submenu)
 
         action_group = Gio.SimpleActionGroup()
-        select_action = Gio.SimpleAction.new(
-            "select", GLib.VariantType.new("s")
-        )
+        select_action = Gio.SimpleAction.new("select", GLib.VariantType.new("s"))
 
         def select_format(_action: Gio.SimpleAction, parameter: GLib.Variant) -> None:
             format_name = parameter.get_string()
@@ -1985,7 +2026,9 @@ class MainWindow(Adw.ApplicationWindow):
                 label = "Raw formats — raw flux (no conversion)"
             else:
                 disk_format = next(
-                    item for item in supported_formats() if item.gw_format == format_name
+                    item
+                    for item in supported_formats()
+                    if item.gw_format == format_name
                 )
                 label = (
                     f"{manufacturer_name(disk_format.gw_format)} — "
@@ -2013,9 +2056,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         if initial_format is not None:
             selected[0] = (
-                initial_format.gw_format
-                if initial_format.gw_format
-                else "__raw_flux__"
+                initial_format.gw_format if initial_format.gw_format else "__raw_flux__"
             )
         return choice_box
 
@@ -2057,7 +2098,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         if disk_format is None:
             return
-        if not save_image and disk_format.suffix not in {".adf", ".st", ".ssd", ".dsd", ".d64"}:
+        if not save_image and disk_format.suffix not in browsable_suffixes():
             self._show_error(
                 "Directory browsing is not available for this format",
                 (
@@ -2126,9 +2167,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         self._read_progress.set_fraction(0)
         self._read_progress.set_text("0%")
-        self._progress_track.set_text(
-            f"Preparing {disk_format.track_count} tracks…"
-        )
+        self._progress_track.set_text(f"Preparing {disk_format.track_count} tracks…")
         self._progress_sectors.set_text(
             f"{disk_format.cylinders} cylinders • {disk_format.heads} "
             f"{'head' if disk_format.heads == 1 else 'heads'} • "
@@ -2141,6 +2180,7 @@ class MainWindow(Adw.ApplicationWindow):
         def worker() -> None:
             active_temporary = temporary
             try:
+
                 def report_progress(update: ReadProgress) -> None:
                     GLib.idle_add(self._update_read_progress, update)
 
@@ -2229,14 +2269,10 @@ class MainWindow(Adw.ApplicationWindow):
             health = Gtk.Button(label="View Track Report")
             health.connect(
                 "clicked",
-                lambda _button: self._show_health_report(
-                    "Read Quality", health_report
-                ),
+                lambda _button: self._show_health_report("Read Quality", health_report),
             )
             actions.append(health)
-        self._show_result(
-            "Capture Complete", destination.name, body, tuple(actions)
-        )
+        self._show_result("Capture Complete", destination.name, body, tuple(actions))
         return GLib.SOURCE_REMOVE
 
     def _update_read_progress(self, update: ReadProgress) -> bool:
@@ -2247,7 +2283,9 @@ class MainWindow(Adw.ApplicationWindow):
             f"Cylinder {update.cylinder}  •  Head {update.head}"
         )
         if update.sectors_read is not None and update.sectors_total is not None:
-            sector_text = f"Sectors recovered: {update.sectors_read} of {update.sectors_total}"
+            sector_text = (
+                f"Sectors recovered: {update.sectors_read} of {update.sectors_total}"
+            )
         else:
             sector_text = "Reading flux data"
         if update.retry is not None:
@@ -2270,7 +2308,8 @@ class MainWindow(Adw.ApplicationWindow):
         temporary: tempfile.TemporaryDirectory[str] | None,
         browser_details: tuple[
             DiskContents, Path, Path, DiskFormat, tuple[ReadProgress, ...]
-        ] | None,
+        ]
+        | None,
     ) -> bool:
         self._end_cancellable_operation()
         if not result.succeeded:
@@ -2303,14 +2342,16 @@ class MainWindow(Adw.ApplicationWindow):
                 on_done=self._leave_browser,
                 health_report=health_report,
                 on_retry_damaged=(
-                    lambda: self._start_track_retry(
-                        image_path,
-                        disk_format,
-                        temporary,
-                        read_progress,
+                    lambda: (
+                        self._start_track_retry(
+                            image_path,
+                            disk_format,
+                            temporary,
+                            read_progress,
+                        )
+                        if health_report is not None and health_report.damaged_count
+                        else None
                     )
-                    if health_report is not None and health_report.damaged_count
-                    else None
                 ),
             )
         except Exception as error:
@@ -2325,11 +2366,6 @@ class MainWindow(Adw.ApplicationWindow):
         if temporary not in self._temporary_directories:
             self._temporary_directories.append(temporary)
         self.set_default_size(1180, 720)
-        self._browser_subtitle = (
-            f"{contents.volume_label} • {contents.format_label}"
-            if contents.format_label
-            else contents.volume_label
-        )
         self._stack.add_named(browser, "browser")
         self._stack.set_visible_child_name("browser")
         return GLib.SOURCE_REMOVE
@@ -2430,14 +2466,18 @@ class MainWindow(Adw.ApplicationWindow):
     def _leave_browser(self) -> None:
         self._show_dashboard()
 
-    def _show_health_report(
-        self, title: str, report: TrackHealthReport
-    ) -> None:
+    def _show_health_report(self, title: str, report: TrackHealthReport) -> None:
         grid = Gtk.Grid(column_spacing=14, row_spacing=4, margin_top=8)
         grid.attach(Gtk.Label(label="Cylinder", css_classes=["heading"]), 0, 0, 1, 1)
         heads = sorted({track.head for track in report.tracks})
         for column, head in enumerate(heads, start=1):
-            grid.attach(Gtk.Label(label=f"Head {head}", css_classes=["heading"]), column, 0, 1, 1)
+            grid.attach(
+                Gtk.Label(label=f"Head {head}", css_classes=["heading"]),
+                column,
+                0,
+                1,
+                1,
+            )
         lookup = {(track.cylinder, track.head): track for track in report.tracks}
         for row, cylinder in enumerate(
             sorted({track.cylinder for track in report.tracks}), start=1
@@ -2495,11 +2535,13 @@ class MainWindow(Adw.ApplicationWindow):
             dialog.add_response("save", "Save details…")
             dialog.connect(
                 "response",
-                lambda _dialog, response: self._copy_diagnostic(diagnostic)
-                if response == "copy"
-                else self._choose_diagnostic_save(diagnostic)
-                if response == "save"
-                else None,
+                lambda _dialog, response: (
+                    self._copy_diagnostic(diagnostic)
+                    if response == "copy"
+                    else self._choose_diagnostic_save(diagnostic)
+                    if response == "save"
+                    else None
+                ),
             )
         dialog.set_default_response("close")
         dialog.set_close_response("close")
@@ -2626,9 +2668,7 @@ class MainWindow(Adw.ApplicationWindow):
             "clean",
         ):
             self._window_actions[name].set_enabled(result.connected)
-        self._window_actions["create-image"].set_enabled(
-            result.host_tools_available
-        )
+        self._window_actions["create-image"].set_enabled(result.host_tools_available)
         self._window_actions["retry-device"].set_enabled(not result.connected)
         self._browse_disk_button.set_sensitive(result.connected)
         if result.connected:
@@ -2665,9 +2705,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         dialog.add_response("quit", "Quit")
         dialog.add_response("offline", "Use images offline")
-        dialog.set_response_appearance(
-            "offline", Adw.ResponseAppearance.SUGGESTED
-        )
+        dialog.set_response_appearance("offline", Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response("offline")
         dialog.set_close_response("offline")
         dialog.connect("response", self._on_detection_dialog_response)
@@ -2713,15 +2751,9 @@ class MainWindow(Adw.ApplicationWindow):
             )
             self._read_progress.set_fraction(0.575)
             self._read_progress.set_text("57.5%")
-            self._progress_track.set_text(
-                "Track 92 of 160  •  Cylinder 45  •  Head 1"
-            )
-            self._progress_sectors.set_text(
-                "Sectors recovered: 10 of 10  •  Retry 1.1"
-            )
-            self._progress_message.set_text(
-                "IBM MFM (10/10 sectors) from Raw Flux"
-            )
+            self._progress_track.set_text("Track 92 of 160  •  Cylinder 45  •  Head 1")
+            self._progress_sectors.set_text("Sectors recovered: 10 of 10  •  Retry 1.1")
+            self._progress_message.set_text("IBM MFM (10/10 sectors) from Raw Flux")
             self._stack.set_visible_child_name("reading")
         elif state == "write-progress":
             self._reading_page.set_title("Writing Amiga DD…")
@@ -2730,13 +2762,9 @@ class MainWindow(Adw.ApplicationWindow):
             )
             self._read_progress.set_fraction(0.725)
             self._read_progress.set_text("72.5%")
-            self._progress_track.set_text(
-                "Track 116 of 160  •  Cylinder 57  •  Head 1"
-            )
+            self._progress_track.set_text("Track 116 of 160  •  Cylinder 57  •  Head 1")
             self._progress_sectors.set_text("Writing and verifying track")
-            self._progress_message.set_text(
-                "AmigaDOS: Writing Track 57.1, verified"
-            )
+            self._progress_message.set_text("AmigaDOS: Writing Track 57.1, verified")
             self._stack.set_visible_child_name("reading")
         elif state == "capture-complete":
             self._show_result(
@@ -2769,10 +2797,40 @@ class MainWindow(Adw.ApplicationWindow):
             )
         elif state == "image-library":
             entries = (
-                CatalogueEntry(Path("/images/Workbench.adf"), 901120, "a" * 64, "Amiga DD", "AmigaDOS OFS", "Workbench"),
-                CatalogueEntry(Path("/images/Ninja Rabbits.scp"), 28401152, "b" * 64, "Raw flux image", None, None),
-                CatalogueEntry(Path("/images/Games.st"), 819200, "c" * 64, "Atari ST 800 KB", "Atari ST FAT12", "GAMES", 2),
-                CatalogueEntry(Path("/backup/Games.st"), 819200, "c" * 64, "Atari ST 800 KB", "Atari ST FAT12", "GAMES", 2),
+                CatalogueEntry(
+                    Path("/images/Workbench.adf"),
+                    901120,
+                    "a" * 64,
+                    "Amiga DD",
+                    "AmigaDOS OFS",
+                    "Workbench",
+                ),
+                CatalogueEntry(
+                    Path("/images/Ninja Rabbits.scp"),
+                    28401152,
+                    "b" * 64,
+                    "Raw flux image",
+                    None,
+                    None,
+                ),
+                CatalogueEntry(
+                    Path("/images/Games.st"),
+                    819200,
+                    "c" * 64,
+                    "Atari ST 800 KB",
+                    "Atari ST FAT12",
+                    "GAMES",
+                    2,
+                ),
+                CatalogueEntry(
+                    Path("/backup/Games.st"),
+                    819200,
+                    "c" * 64,
+                    "Atari ST 800 KB",
+                    "Atari ST FAT12",
+                    "GAMES",
+                    2,
+                ),
             )
             self._finish_catalogue(Path("/images"), entries)
         elif state == "track-health":
@@ -2799,9 +2857,7 @@ class MainWindow(Adw.ApplicationWindow):
                             else "10/10 sectors",
                         )
                     )
-            self._show_health_report(
-                "Disk Health", TrackHealthReport(tuple(tracks))
-            )
+            self._show_health_report("Disk Health", TrackHealthReport(tuple(tracks)))
         elif state == "drive-tools":
             self._finish_hardware_tool(
                 HardwareToolResult(
@@ -2826,9 +2882,7 @@ class MainWindow(Adw.ApplicationWindow):
                         "AUTO",
                         True,
                         children=(
-                            ImageEntry(
-                                "START.PRG", False, 48216, _reader=lambda: b""
-                            ),
+                            ImageEntry("START.PRG", False, 48216, _reader=lambda: b""),
                         ),
                     ),
                     ImageEntry("README.TXT", False, 1842, _reader=lambda: b""),

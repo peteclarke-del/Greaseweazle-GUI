@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
-import threading
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 
 from .disk_formats import DiskFormat
 from .operation import OperationController
+from .subprocess_runner import run_streaming_process
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,76 +94,51 @@ def read_disk(
     if executable is None:
         return ReadResult(False, "The Greaseweazle host tool (‘gw’) is not available.")
 
-    environment = os.environ.copy()
-    environment["PYTHONUNBUFFERED"] = "1"
+    command = [executable, "read"]
+    if drive is not None:
+        command.extend(["--drive", drive])
+    if disk_format.gw_format:
+        command.extend(["--format", disk_format.gw_format])
+    if revolutions is not None:
+        command.extend(["--revs", str(revolutions)])
+    if retries is not None:
+        command.extend(["--retries", str(retries)])
+    if seek_retries is not None:
+        command.extend(["--seek-retries", str(seek_retries)])
+    if tracks is not None:
+        command.extend(["--tracks", tracks])
+    elif not disk_format.gw_format:
+        command.extend(["--tracks", "c=0-79:h=0-1"])
+    command.append(str(destination))
+    progress_updates: list[ReadProgress] = []
+
+    def process_line(line: str) -> None:
+        update = parse_progress_line(line, disk_format)
+        if update is not None:
+            progress_updates.append(update)
+            if progress is not None:
+                progress(update)
+
     try:
-        command = [executable, "read"]
-        if drive is not None:
-            command.extend(["--drive", drive])
-        if disk_format.gw_format:
-            command.extend(["--format", disk_format.gw_format])
-        if revolutions is not None:
-            command.extend(["--revs", str(revolutions)])
-        if retries is not None:
-            command.extend(["--retries", str(retries)])
-        if seek_retries is not None:
-            command.extend(["--seek-retries", str(seek_retries)])
-        if tracks is not None:
-            command.extend(["--tracks", tracks])
-        elif not disk_format.gw_format:
-            command.extend(["--tracks", "c=0-79:h=0-1"])
-        command.append(str(destination))
-        process = subprocess.Popen(
+        process_result = run_streaming_process(
             command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            env=environment,
+            timeout=timeout,
+            on_line=process_line,
+            controller=controller,
+            process_factory=subprocess.Popen,
         )
     except OSError as error:
         return ReadResult(False, f"The Greaseweazle tool could not be started: {error}")
-    if controller is not None:
-        controller.register(process)
-
-    timed_out = threading.Event()
-
-    def stop_process() -> None:
-        if process.poll() is None:
-            timed_out.set()
-            process.kill()
-
-    timer = threading.Timer(timeout, stop_process)
-    timer.daemon = True
-    timer.start()
-    output_lines: list[str] = []
-    progress_updates: list[ReadProgress] = []
-    try:
-        if process.stdout is not None:
-            for raw_line in process.stdout:
-                line = raw_line.rstrip("\r\n")
-                output_lines.append(line)
-                update = parse_progress_line(line, disk_format)
-                if update is not None:
-                    progress_updates.append(update)
-                    if progress is not None:
-                        progress(update)
-        return_code = process.wait()
-    finally:
-        timer.cancel()
-        if controller is not None:
-            controller.unregister(process)
-
-    output = "\n".join(output_lines).strip()
-    if controller is not None and controller.cancelled:
+    output = process_result.output
+    if process_result.cancelled:
         return ReadResult(
             False, "Reading was cancelled safely.", output, tuple(progress_updates)
         )
-    if timed_out.is_set():
+    if process_result.timed_out:
         return ReadResult(
             False, "Reading the disk timed out.", output, tuple(progress_updates)
         )
-    if return_code != 0:
+    if process_result.return_code != 0:
         return ReadResult(
             False, "The disk could not be read.", output, tuple(progress_updates)
         )
@@ -175,6 +149,4 @@ def read_disk(
             output,
             tuple(progress_updates),
         )
-    return ReadResult(
-        True, "Disk read successfully.", output, tuple(progress_updates)
-    )
+    return ReadResult(True, "Disk read successfully.", output, tuple(progress_updates))

@@ -32,15 +32,11 @@ class TrackHealthReport:
 
     @property
     def recovered_count(self) -> int:
-        return sum(
-            track.condition is TrackCondition.RECOVERED for track in self.tracks
-        )
+        return sum(track.condition is TrackCondition.RECOVERED for track in self.tracks)
 
     @property
     def damaged_count(self) -> int:
-        return sum(
-            track.condition is TrackCondition.DAMAGED for track in self.tracks
-        )
+        return sum(track.condition is TrackCondition.DAMAGED for track in self.tracks)
 
     @property
     def summary(self) -> str:

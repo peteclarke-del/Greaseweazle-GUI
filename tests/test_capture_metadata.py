@@ -1,7 +1,7 @@
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from greaseweazle_gui.capture_metadata import write_capture_report
 from greaseweazle_gui.disk_formats import DISK_FORMATS

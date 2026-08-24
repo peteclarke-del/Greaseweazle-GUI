@@ -1,6 +1,6 @@
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from greaseweazle_gui.filesystems import open_image
 
@@ -38,7 +38,9 @@ class AcornDfsTests(unittest.TestCase):
         side1 = dfs_side("SIDE ONE", "ONE", b"1")
         chunks = []
         for offset in range(0, len(side0), 2560):
-            chunks.extend((side0[offset : offset + 2560], side1[offset : offset + 2560]))
+            chunks.extend(
+                (side0[offset : offset + 2560], side1[offset : offset + 2560])
+            )
         with tempfile.TemporaryDirectory() as folder:
             image = Path(folder) / "disk.dsd"
             image.write_bytes(b"".join(chunks))

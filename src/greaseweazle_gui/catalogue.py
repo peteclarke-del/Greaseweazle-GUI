@@ -8,12 +8,28 @@ from pathlib import Path
 
 from .image_inspector import inspect_image
 
-
 IMAGE_SUFFIXES = frozenset(
     {
-        ".adf", ".st", ".scp", ".a2r", ".img", ".ima", ".ssd", ".dsd",
-        ".adm", ".ads", ".adl", ".do", ".po", ".d64", ".d71", ".d81",
-        ".d1m", ".d2m", ".d4m", ".sf7",
+        ".adf",
+        ".st",
+        ".scp",
+        ".a2r",
+        ".img",
+        ".ima",
+        ".ssd",
+        ".dsd",
+        ".adm",
+        ".ads",
+        ".adl",
+        ".do",
+        ".po",
+        ".d64",
+        ".d71",
+        ".d81",
+        ".d1m",
+        ".d2m",
+        ".d4m",
+        ".sf7",
     }
 )
 
@@ -34,8 +50,10 @@ def scan_catalogue(folder: Path, limit: int = 10000) -> tuple[CatalogueEntry, ..
         raise OSError("The catalogue folder does not exist.")
     paths = sorted(
         (
-            path for path in folder.rglob("*")
-            if path.is_file() and not path.is_symlink()
+            path
+            for path in folder.rglob("*")
+            if path.is_file()
+            and not path.is_symlink()
             and path.suffix.lower() in IMAGE_SUFFIXES
         ),
         key=lambda path: str(path).casefold(),

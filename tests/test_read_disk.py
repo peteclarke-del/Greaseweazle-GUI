@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
-import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from greaseweazle_gui.disk_formats import (
@@ -42,9 +41,7 @@ class ReadDiskTests(unittest.TestCase):
 
         self.assertTrue(result.succeeded)
         command = popen.call_args.args[0]
-        self.assertEqual(
-            command[command.index("--revs") + 1], "3"
-        )
+        self.assertEqual(command[command.index("--revs") + 1], "3")
         self.assertEqual(command[command.index("--retries") + 1], "8")
         self.assertEqual(command[command.index("--seek-retries") + 1], "2")
 
@@ -61,9 +58,7 @@ class ReadDiskTests(unittest.TestCase):
             destination = Path(temporary) / "probe.scp"
             destination.write_bytes(b"probe")
 
-            result = read_disk(
-                AUTO_DETECT_FORMAT, destination, tracks="c=0:h=0-1"
-            )
+            result = read_disk(AUTO_DETECT_FORMAT, destination, tracks="c=0:h=0-1")
 
         self.assertTrue(result.succeeded)
         command = popen.call_args.args[0]
@@ -71,7 +66,9 @@ class ReadDiskTests(unittest.TestCase):
 
     @patch("greaseweazle_gui.read_disk.subprocess.Popen")
     @patch("greaseweazle_gui.read_disk.shutil.which", return_value="/usr/bin/gw")
-    def test_uses_selected_format_and_destination(self, _which: object, popen: Mock) -> None:
+    def test_uses_selected_format_and_destination(
+        self, _which: object, popen: Mock
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             destination = Path(temporary) / "disk.adf"
             destination.write_bytes(b"image")
@@ -146,9 +143,7 @@ class ReadDiskTests(unittest.TestCase):
 
 class ProgressParserTests(unittest.TestCase):
     def test_preservation_capture_includes_track_82_on_both_heads(self) -> None:
-        update = parse_progress_line(
-            "T82.1: Raw Flux", PRESERVATION_FORMAT
-        )
+        update = parse_progress_line("T82.1: Raw Flux", PRESERVATION_FORMAT)
 
         self.assertIsNotNone(update)
         assert update is not None

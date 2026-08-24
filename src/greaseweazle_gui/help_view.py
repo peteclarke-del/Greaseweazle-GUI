@@ -8,7 +8,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gtk  # noqa: E402
+from gi.repository import Gtk  # noqa: E402
 
 from .help_content import HELP_TOPICS, HelpTopic
 
@@ -58,9 +58,7 @@ class HelpView(Gtk.Box):
         self.append(article_scroller)
         self._topic_list.select_row(self._topic_list.get_row_at_index(0))
 
-    def _topic_selected(
-        self, _list: Gtk.ListBox, row: Gtk.ListBoxRow | None
-    ) -> None:
+    def _topic_selected(self, _list: Gtk.ListBox, row: Gtk.ListBoxRow | None) -> None:
         if row is None:
             return
         self._show_topic(HELP_TOPICS[row.topic_index])
@@ -75,9 +73,7 @@ class HelpView(Gtk.Box):
         summary.add_css_class("dim-label")
         self._article.append(summary)
 
-        image_path = files("greaseweazle_gui").joinpath(
-            "help_images", topic.screenshot
-        )
+        image_path = files("greaseweazle_gui").joinpath("help_images", topic.screenshot)
         if image_path.is_file():
             picture = Gtk.Picture.new_for_filename(str(image_path))
             picture.set_tooltip_text(topic.screenshot_alt)

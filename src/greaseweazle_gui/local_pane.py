@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import gi
@@ -116,9 +116,7 @@ class LocalFilePane(Gtk.Box):
             self.current_directory = parent
             self.refresh()
 
-    def set_view_options(
-        self, sort_key: str, reverse: bool, show_hidden: bool
-    ) -> None:
+    def set_view_options(self, sort_key: str, reverse: bool, show_hidden: bool) -> None:
         self._sort_key = sort_key
         self._sort_reverse = reverse
         self._show_hidden = show_hidden
@@ -198,14 +196,18 @@ class LocalFilePane(Gtk.Box):
         )
         icon = "folder-symbolic" if entry.is_directory else "text-x-generic-symbolic"
         content.append(Gtk.Image.new_from_icon_name(icon))
-        content.append(Gtk.Label(label=entry.path.name, xalign=0, hexpand=True, ellipsize=3))
+        content.append(
+            Gtk.Label(label=entry.path.name, xalign=0, hexpand=True, ellipsize=3)
+        )
         if not entry.is_directory:
             size = Gtk.Label(label=GLib.format_size(entry.size), xalign=1)
             size.add_css_class("dim-label")
             content.append(size)
         if entry.modified:
             changed = Gtk.Label(
-                label=datetime.fromtimestamp(entry.modified).strftime("%d %b %Y %H:%M"),
+                label=datetime.fromtimestamp(entry.modified, timezone.utc)
+                .astimezone()
+                .strftime("%d %b %Y %H:%M"),
                 xalign=1,
             )
             changed.add_css_class("dim-label")
@@ -264,7 +266,12 @@ class LocalFilePane(Gtk.Box):
         if self._context_menu is None:
             return
         rectangle = Gdk.Rectangle()
-        rectangle.x, rectangle.y, rectangle.width, rectangle.height = int(x), int(y), 1, 1
+        rectangle.x, rectangle.y, rectangle.width, rectangle.height = (
+            int(x),
+            int(y),
+            1,
+            1,
+        )
         self._context_menu.set_pointing_to(rectangle)
         self._context_menu.popup()
 

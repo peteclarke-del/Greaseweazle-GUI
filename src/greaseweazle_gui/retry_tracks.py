@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
-import os
 from pathlib import Path
-import tempfile
 
 from .disk_formats import DiskFormat
 from .operation import OperationController
@@ -41,8 +41,7 @@ def retry_damaged_tracks(
     image is replaced only after every requested read has completed.
     """
     damaged = tuple(
-        track for track in report.tracks
-        if track.condition is TrackCondition.DAMAGED
+        track for track in report.tracks if track.condition is TrackCondition.DAMAGED
     )
     if not damaged:
         return RetryTracksResult(True, "There are no damaged tracks to retry.")
@@ -57,7 +56,9 @@ def retry_damaged_tracks(
     try:
         original = image_path.read_bytes()
     except OSError as error:
-        return RetryTracksResult(False, "The captured image could not be opened.", str(error))
+        return RetryTracksResult(
+            False, "The captured image could not be opened.", str(error)
+        )
     if len(original) != expected_size:
         return RetryTracksResult(
             False,
@@ -75,17 +76,26 @@ def retry_damaged_tracks(
         for number, track in enumerate(damaged, start=1):
             if controller is not None and controller.cancelled:
                 return RetryTracksResult(
-                    False, "Track retry was cancelled safely.",
-                    "\n".join(diagnostics), tuple(updates)
+                    False,
+                    "Track retry was cancelled safely.",
+                    "\n".join(diagnostics),
+                    tuple(updates),
                 )
-            partial = temporary_path / f"track-{track.cylinder}-{track.head}{image_path.suffix}"
+            partial = (
+                temporary_path
+                / f"track-{track.cylinder}-{track.head}{image_path.suffix}"
+            )
 
-            def forward(update: ReadProgress, completed: int = number - 1) -> None:
+            def forward(
+                update: ReadProgress,
+                completed: int = number - 1,
+                track_number: int = number,
+            ) -> None:
                 adjusted = ReadProgress(
                     fraction=min((completed + update.fraction) / len(damaged), 1.0),
                     cylinder=update.cylinder,
                     head=update.head,
-                    track_number=number,
+                    track_number=track_number,
                     track_count=len(damaged),
                     sectors_read=update.sectors_read,
                     sectors_total=update.sectors_total,
@@ -117,7 +127,10 @@ def retry_damaged_tracks(
                 partial_data = partial.read_bytes()
             except OSError as error:
                 return RetryTracksResult(
-                    False, "A retried track could not be loaded.", str(error), tuple(updates)
+                    False,
+                    "A retried track could not be loaded.",
+                    str(error),
+                    tuple(updates),
                 )
             index = track.cylinder * disk_format.heads + track.head
             offset = index * track_size
@@ -140,7 +153,10 @@ def retry_damaged_tracks(
             os.replace(staged, image_path)
         except OSError as error:
             return RetryTracksResult(
-                False, "The recovered image could not be saved.", str(error), tuple(updates)
+                False,
+                "The recovered image could not be saved.",
+                str(error),
+                tuple(updates),
             )
     return RetryTracksResult(
         True,

@@ -46,9 +46,10 @@ Complete when a capture is reproducible and its provenance can be audited later.
 ## 4. Filesystem coverage
 
 - [Complete] Move filesystem readers behind a small bounded plugin interface.
-- [In progress] Read-only browsing covers Atari FAT12, AmigaDOS OFS/FFS, Acorn
-  DFS SSD/DSD, and Commodore 1541 D64. Apple, ADFS, ProDOS, and further
-  filesystems for which the image format provides sufficient sector data.
+- [In progress] Read-only browsing covers Atari TOS and compatible FAT12 IMG or
+  IMA images, AmigaDOS OFS/FFS, Acorn DFS SSD/DSD, and Commodore 1541 D64.
+  Apple DOS, ADFS, ProDOS, CP/M, and further filesystems remain planned where
+  the image format provides sufficient sector data.
 - Add fixtures for damaged directories, cyclic allocation chains, unusual names,
   and files spanning non-contiguous blocks.
 - Keep unsupported and copy-protected media browse-safe by offering the raw image
@@ -64,8 +65,8 @@ reader is bounded against corrupt or hostile image metadata.
   results and tools are presented in the window container rather than dialogs.
 - [Complete] Revisit the dual-pane layout, navigation model, selection behaviour, menus,
   shortcuts, drag-and-drop, and accessible labels as one focused milestone.
-- [In progress] Add conflict choices, partial-result reporting, and clear
-  read-only state before allowing any write-back into an image.
+- [Complete] Add Skip, Keep Both, and Replace conflict choices, partial-result
+  reporting, multiple selection, and a clear read-only source state.
 - Add optional image editing as a transactional workflow with undo and an explicit
   **Save image** step; never modify the source capture in place.
 
@@ -85,3 +86,16 @@ all mutations are transactional and recoverable.
 
 Complete when collections and hardware can be managed without weakening the
 simple read, extract, and write workflows.
+
+## 7. Distribution
+
+- [Complete] Build an Ubuntu 24.04 and Linux Mint 22 `.deb` containing the
+  application, help assets, pinned Greaseweazle host tools, desktop metadata,
+  and official udev rules.
+- [Complete] Validate tag and project versions, install-test the package, create
+  SHA-256 checksums, and publish release assets through GitHub Actions.
+- Add packages for further distribution families after they can be built and
+  install-tested on their native runners.
+
+Complete when a tagged release produces a tested installer that a user can
+download and install without preparing a Python development environment.

@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import tempfile
-import threading
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 
 from .disk_formats import DiskFormat
 from .filesystem_formatters import (
@@ -18,7 +17,7 @@ from .filesystem_formatters import (
     initialise_filesystem,
 )
 from .operation import OperationController
-
+from .subprocess_runner import run_streaming_process
 
 # ``ibm.scan`` detects unknown IBM layouts and has no geometry to create.
 # Greaseweazle currently advertises ``zx.rocky.ss40`` but rejects its own
@@ -97,8 +96,6 @@ def create_blank_image(
     if not destination.parent.is_dir():
         return CreateImageResult(False, "The destination folder does not exist.")
 
-    environment = os.environ.copy()
-    environment["PYTHONUNBUFFERED"] = "1"
     with tempfile.TemporaryDirectory(
         prefix=".greaseweazle-create-", dir=destination.parent
     ) as temporary:
@@ -114,55 +111,33 @@ def create_blank_image(
             str(source),
             str(output),
         ]
+
+        def process_line(line: str) -> None:
+            update = parse_create_progress(line, disk_format)
+            if update is not None and progress is not None:
+                progress(update)
+
         try:
-            process = subprocess.Popen(
+            process_result = run_streaming_process(
                 command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                env=environment,
+                timeout=timeout,
+                on_line=process_line,
+                controller=controller,
+                process_factory=subprocess.Popen,
             )
         except OSError as error:
             return CreateImageResult(
                 False, f"Greaseweazle could not be started: {error}"
             )
-        if controller is not None:
-            controller.register(process)
 
-        timed_out = threading.Event()
-
-        def stop() -> None:
-            if process.poll() is None:
-                timed_out.set()
-                process.kill()
-
-        timer = threading.Timer(timeout, stop)
-        timer.daemon = True
-        timer.start()
-        lines: list[str] = []
-        try:
-            if process.stdout is not None:
-                for raw_line in process.stdout:
-                    line = raw_line.rstrip("\r\n")
-                    lines.append(line)
-                    update = parse_create_progress(line, disk_format)
-                    if update is not None and progress is not None:
-                        progress(update)
-            return_code = process.wait()
-        finally:
-            timer.cancel()
-            if controller is not None:
-                controller.unregister(process)
-
-        diagnostic = "\n".join(lines).strip()
-        if controller is not None and controller.cancelled:
+        diagnostic = process_result.output
+        if process_result.cancelled:
             return CreateImageResult(
                 False, "Creating the image was cancelled.", diagnostic
             )
-        if timed_out.is_set():
+        if process_result.timed_out:
             return CreateImageResult(False, "Creating the image timed out.", diagnostic)
-        if return_code != 0:
+        if process_result.return_code != 0:
             return CreateImageResult(
                 False,
                 "Greaseweazle could not create this image format.",
@@ -177,9 +152,7 @@ def create_blank_image(
         filesystem: str | None = None
         if initialise:
             try:
-                filesystem = initialise_filesystem(
-                    output, disk_format, volume_label
-                )
+                filesystem = initialise_filesystem(output, disk_format, volume_label)
             except (OSError, FilesystemFormatError) as error:
                 return CreateImageResult(
                     False,

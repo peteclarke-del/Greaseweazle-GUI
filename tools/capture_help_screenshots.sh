@@ -24,7 +24,7 @@ else
 fi
 
 for state in "${states[@]}"; do
-  GREASEWEAZLE_GUI_DOCUMENTATION_STATE="$state" "$project_dir/run.sh" &
+  GREASEWEAZLE_GUI_DOCUMENTATION_STATE="$state" "$project_dir/greaseweazlegui" &
   app_pid=$!
   window_id=""
   for _attempt in {1..30}; do

@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-import threading
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 
 from .create_image import CreateImageProgress, parse_create_progress
 from .disk_formats import DiskFormat
 from .operation import OperationController
+from .subprocess_runner import run_streaming_process
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,13 +34,15 @@ def convert_image(
 ) -> ConvertImageResult:
     executable = shutil.which("gw")
     if executable is None:
-        return ConvertImageResult(False, "The Greaseweazle host tool (‘gw’) is unavailable.")
+        return ConvertImageResult(
+            False, "The Greaseweazle host tool (‘gw’) is unavailable."
+        )
     if not target_format.gw_format:
         return ConvertImageResult(False, "Choose a concrete destination format.")
     if not source.is_file() or not destination.parent.is_dir():
-        return ConvertImageResult(False, "The source or destination path is unavailable.")
-    environment = os.environ.copy()
-    environment["PYTHONUNBUFFERED"] = "1"
+        return ConvertImageResult(
+            False, "The source or destination path is unavailable."
+        )
     with tempfile.TemporaryDirectory(
         prefix=".greaseweazle-convert-", dir=destination.parent
     ) as temporary:
@@ -53,52 +55,39 @@ def convert_image(
             str(source),
             str(output),
         ]
+
+        def process_line(line: str) -> None:
+            update = parse_create_progress(line, target_format)
+            if update is not None and progress is not None:
+                progress(update)
+
         try:
-            process = subprocess.Popen(
+            process_result = run_streaming_process(
                 command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                env=environment,
+                timeout=timeout,
+                on_line=process_line,
+                controller=controller,
+                process_factory=subprocess.Popen,
             )
         except OSError as error:
-            return ConvertImageResult(False, "Greaseweazle could not be started.", str(error))
-        if controller is not None:
-            controller.register(process)
-        timed_out = threading.Event()
-
-        def stop() -> None:
-            if process.poll() is None:
-                timed_out.set()
-                process.kill()
-
-        timer = threading.Timer(timeout, stop)
-        timer.daemon = True
-        timer.start()
-        lines: list[str] = []
-        try:
-            if process.stdout is not None:
-                for raw_line in process.stdout:
-                    line = raw_line.rstrip("\r\n")
-                    lines.append(line)
-                    update = parse_create_progress(line, target_format)
-                    if update is not None and progress is not None:
-                        progress(update)
-            return_code = process.wait()
-        finally:
-            timer.cancel()
-            if controller is not None:
-                controller.unregister(process)
-        diagnostic = "\n".join(lines).strip()
-        if controller is not None and controller.cancelled:
-            return ConvertImageResult(False, "Image conversion was cancelled safely.", diagnostic)
-        if timed_out.is_set():
+            return ConvertImageResult(
+                False, "Greaseweazle could not be started.", str(error)
+            )
+        diagnostic = process_result.output
+        if process_result.cancelled:
+            return ConvertImageResult(
+                False, "Image conversion was cancelled safely.", diagnostic
+            )
+        if process_result.timed_out:
             return ConvertImageResult(False, "Image conversion timed out.", diagnostic)
-        if return_code != 0 or not output.is_file():
-            return ConvertImageResult(False, "The image could not be converted.", diagnostic)
+        if process_result.return_code != 0 or not output.is_file():
+            return ConvertImageResult(
+                False, "The image could not be converted.", diagnostic
+            )
         try:
             os.replace(output, destination)
         except OSError as error:
-            return ConvertImageResult(False, "The converted image could not be saved.", str(error))
+            return ConvertImageResult(
+                False, "The converted image could not be saved.", str(error)
+            )
     return ConvertImageResult(True, "Image converted successfully.")

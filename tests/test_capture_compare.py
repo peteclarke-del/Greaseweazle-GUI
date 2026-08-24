@@ -1,6 +1,6 @@
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from greaseweazle_gui.capture_compare import compare_captures
@@ -18,7 +18,9 @@ class CaptureComparisonTests(unittest.TestCase):
         self.assertTrue(result.identical)
 
     def test_reports_changed_track_side(self) -> None:
-        disk_format = next(item for item in DISK_FORMATS if item.gw_format == "atarist.720")
+        disk_format = next(
+            item for item in DISK_FORMATS if item.gw_format == "atarist.720"
+        )
         size = disk_format.track_count * disk_format.sectors_per_track * 512
         first_data = bytearray(size)
         second_data = bytearray(size)

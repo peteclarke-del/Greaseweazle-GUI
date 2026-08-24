@@ -30,9 +30,7 @@ class GreaseweazleApplication(Adw.Application):
         if window is None:
             window = MainWindow(application=self)
             window.present()
-            documentation_state = os.environ.get(
-                "GREASEWEAZLE_GUI_DOCUMENTATION_STATE"
-            )
+            documentation_state = os.environ.get("GREASEWEAZLE_GUI_DOCUMENTATION_STATE")
             if documentation_state:
                 window.show_documentation_state(documentation_state)
             else:

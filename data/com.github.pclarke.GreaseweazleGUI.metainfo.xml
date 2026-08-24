@@ -12,8 +12,9 @@
   <description>
     <p>
       A native GNOME interface for reading, writing, creating, and browsing
-      floppy disk images, with offline filesystem browsing, preservation
-      reports, image inspection and conversion, and Greaseweazle drive tools.
+      floppy disk images, with offline browsing for AmigaDOS, FAT12, Acorn DFS,
+      and Commodore 1541 filesystems, preservation reports, image inspection
+      and conversion, and Greaseweazle drive tools.
     </p>
   </description>
   <launchable type="desktop-id">com.github.pclarke.GreaseweazleGUI.desktop</launchable>

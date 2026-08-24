@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
-from functools import lru_cache
 import json
-from pathlib import Path
 import re
 import shutil
 import subprocess
+from collections import defaultdict
+from functools import lru_cache
+from pathlib import Path
 
 from .disk_formats import DISK_FORMATS, DiskFormat
-
 
 _FORMAT_BLOCK = re.compile(
     r"FORMAT options:\s*(.*?)\n\s*Supported file suffixes:", re.DOTALL
@@ -109,7 +108,7 @@ def _image_suffix(format_name: str) -> str:
         return ".adf"
     if format_name.startswith("atarist."):
         return ".st"
-    if format_name.startswith("apple2.appledos.") or format_name.startswith("apple2.nofs."):
+    if format_name.startswith(("apple2.appledos.", "apple2.nofs.")):
         return ".do"
     if format_name.startswith("apple2.prodos."):
         return ".po"
@@ -138,7 +137,9 @@ def _image_suffix(format_name: str) -> str:
     return ".img"
 
 
-def _query_geometry(executable: str, names: tuple[str, ...]) -> dict[str, tuple[int, int, int]]:
+def _query_geometry(
+    executable: str, names: tuple[str, ...]
+) -> dict[str, tuple[int, int, int]]:
     try:
         resolved = Path(executable).resolve()
         first_line = resolved.read_text(errors="replace").splitlines()[0]
@@ -212,7 +213,14 @@ def grouped_formats() -> tuple[tuple[str, tuple[DiskFormat, ...]], ...]:
     return tuple(
         (
             manufacturer,
-            tuple(sorted(formats, key=lambda item: format_menu_label(item.gw_format).casefold())),
+            tuple(
+                sorted(
+                    formats,
+                    key=lambda item: format_menu_label(item.gw_format).casefold(),
+                )
+            ),
         )
-        for manufacturer, formats in sorted(groups.items(), key=lambda item: item[0].casefold())
+        for manufacturer, formats in sorted(
+            groups.items(), key=lambda item: item[0].casefold()
+        )
     )

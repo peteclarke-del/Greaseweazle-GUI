@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
+from dataclasses import dataclass
 from pathlib import Path
 
-from .filesystems import FilesystemError, open_image
+from .filesystems import FilesystemError, browsable_suffixes, open_image
 from .image_detection import ImageFormatGuess, detect_image_format
 
 
@@ -29,11 +29,13 @@ def inspect_image(path: Path) -> ImageInspection:
     guess = detect_image_format(path)
     filesystem: str | None = None
     volume_label: str | None = None
-    integrity = "The image container was readable; filesystem validation is unavailable."
+    integrity = (
+        "The image container was readable; filesystem validation is unavailable."
+    )
     try:
         contents = open_image(path)
     except FilesystemError as error:
-        if path.suffix.lower() in {".adf", ".st"}:
+        if path.suffix.lower() in browsable_suffixes():
             integrity = f"Filesystem validation failed: {error}"
     else:
         filesystem = contents.format_label

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from datetime import datetime, timezone
 import hashlib
 import json
 import os
-from pathlib import Path
 import tempfile
+from dataclasses import asdict
+from datetime import datetime, timezone
+from pathlib import Path
 
 from .disk_formats import DiskFormat
 from .read_disk import ReadResult
@@ -62,7 +62,7 @@ def write_capture_report(
         staged = Path(temporary.name)
     try:
         os.replace(staged, report_path)
-    except Exception:
+    except OSError:
         staged.unlink(missing_ok=True)
         raise
     return report_path
