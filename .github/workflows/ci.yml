@@ -41,7 +41,7 @@ jobs:
         run: python -m compileall -q src tests
 
       - name: Check launcher syntax
-        run: bash -n greaseweazlegui packaging/*.sh
+        run: bash -n greaseweazle-gui packaging/*.sh
 
       - name: Validate desktop metadata
         run: |

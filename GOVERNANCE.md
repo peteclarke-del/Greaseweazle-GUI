@@ -2,7 +2,7 @@
 
 ## Scope and roles
 
-GreaseWeazleGUI is a native GNOME application for inspecting, imaging, and
+Greaseweazle-GUI is a native GNOME application for inspecting, imaging, and
 writing floppy media through Greaseweazle hardware. Peter Clarke
 (`@peteclarke-del`) is the current maintainer and release owner. Contributors
 may propose, implement, test, and review changes; repository administration and

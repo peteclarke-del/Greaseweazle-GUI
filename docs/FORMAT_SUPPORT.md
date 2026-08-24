@@ -1,17 +1,17 @@
 # Format and filesystem support
 
-GreaseWeazleGUI uses two separate layers when reading a disk.
+Greaseweazle-GUI uses two separate layers when reading a disk.
 
 1. Greaseweazle identifies and decodes the physical track format. The format
    catalogue is loaded from the installed `gw` host tools and is grouped by
    manufacturer in the application.
-2. GreaseWeazleGUI opens the decoded sector image with a bounded filesystem
+2. Greaseweazle-GUI opens the decoded sector image with a bounded filesystem
    reader. This second step produces the normal files and folders shown in the
    browser.
 
 A disk can therefore be captured correctly even when its directory cannot be
 shown. Low-level format recognition is not a promise that the disk contains a
-filesystem, or that GreaseWeazleGUI understands that filesystem.
+filesystem, or that Greaseweazle-GUI understands that filesystem.
 
 ## Browseable filesystems
 

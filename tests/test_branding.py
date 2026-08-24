@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 class BrandingTests(unittest.TestCase):
     def test_product_identity_is_exact(self) -> None:
-        self.assertEqual(APPLICATION_NAME, "GreaseWeazleGUI")
+        self.assertEqual(APPLICATION_NAME, "Greaseweazle-GUI")
         self.assertEqual(APPLICATION_SUBTITLE, "for linux")
 
     def test_desktop_metadata_uses_product_identity(self) -> None:
@@ -20,8 +20,17 @@ class BrandingTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn(f"Name={APPLICATION_NAME}\n", desktop)
         self.assertIn(f"GenericName={APPLICATION_SUBTITLE}\n", desktop)
+        self.assertIn("Exec=greaseweazle-gui\n", desktop)
         self.assertIn(f"<name>{APPLICATION_NAME}</name>", metadata)
         self.assertIn(f"<summary>{APPLICATION_SUBTITLE}</summary>", metadata)
+
+    def test_help_uses_official_greaseweazle_spelling(self) -> None:
+        help_text = (PROJECT_ROOT / "src/greaseweazle_gui/help_content.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Greaseweazle", help_text)
+        self.assertNotIn("GreaseWeazle", help_text)
+        self.assertNotIn("GreaseWeasel", help_text)
 
 
 if __name__ == "__main__":

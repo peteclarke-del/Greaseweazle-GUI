@@ -24,12 +24,12 @@ else
 fi
 
 for state in "${states[@]}"; do
-  GREASEWEAZLE_GUI_DOCUMENTATION_STATE="$state" "$project_dir/greaseweazlegui" &
+  GREASEWEAZLE_GUI_DOCUMENTATION_STATE="$state" "$project_dir/greaseweazle-gui" &
   app_pid=$!
   window_id=""
   for _attempt in {1..30}; do
     window_id=$(xwininfo -root -tree 2>/dev/null | awk '
-      /"GreaseWeazleGUI"/ && /__main__\.py/ { print $1; exit }
+      /"Greaseweazle-GUI"/ && /__main__\.py/ { print $1; exit }
     ')
     if [[ -n "$window_id" ]]; then
       break
