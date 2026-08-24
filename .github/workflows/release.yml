@@ -94,7 +94,7 @@ jobs:
         run: cd dist && sha256sum *.deb *.whl > SHA256SUMS
 
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Greaseweazle-GUI-${{ github.ref_name }}
           path: dist/
