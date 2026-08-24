@@ -21,9 +21,7 @@ class DiskFormat:
 
 
 DISK_FORMATS = (
-    DiskFormat(
-        "Amiga DD", "880 KB AmigaDOS disk", "amiga.amigados", ".adf", 80, 2, 11
-    ),
+    DiskFormat("Amiga DD", "880 KB AmigaDOS disk", "amiga.amigados", ".adf", 80, 2, 11),
     DiskFormat(
         "Amiga HD",
         "1.76 MB AmigaDOS disk",
@@ -46,17 +44,27 @@ DISK_FORMATS = (
         "Atari ST 360 KB", "80 cylinders, single-sided", "atarist.360", ".st", 80, 1, 9
     ),
     DiskFormat(
-        "Atari ST 400 KB", "80 cylinders, single-sided, 10 sectors", "atarist.400", ".st", 80, 1, 10
+        "Atari ST 400 KB",
+        "80 cylinders, single-sided, 10 sectors",
+        "atarist.400",
+        ".st",
+        80,
+        1,
+        10,
     ),
     DiskFormat(
-        "Atari ST 440 KB", "80 cylinders, single-sided, 11 sectors", "atarist.440", ".st", 80, 1, 11
+        "Atari ST 440 KB",
+        "80 cylinders, single-sided, 11 sectors",
+        "atarist.440",
+        ".st",
+        80,
+        1,
+        11,
     ),
 )
 
 
-AUTO_DETECT_FORMAT = DiskFormat(
-    "Auto-detect", "Raw flux scan", "", ".scp", 80, 2, 0
-)
+AUTO_DETECT_FORMAT = DiskFormat("Auto-detect", "Raw flux scan", "", ".scp", 80, 2, 0)
 
 PROBE_FORMAT = DiskFormat(
     "Format probe", "Cylinder zero raw flux scan", "", ".scp", 1, 2, 0

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from greaseweazle_gui.format_catalog import (
+    _image_suffix,
     format_menu_label,
     manufacturer_name,
     parse_format_names,
@@ -10,6 +11,9 @@ from greaseweazle_gui.format_catalog import (
 
 
 class FormatCatalogTests(unittest.TestCase):
+    def test_non_contiguous_epson_layout_uses_flux_container(self) -> None:
+        self.assertEqual(_image_suffix("epson.qx10.logo"), ".scp")
+
     def test_parses_and_sorts_greaseweazle_help_formats(self) -> None:
         help_text = """
 FORMAT options:

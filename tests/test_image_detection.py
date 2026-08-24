@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import struct
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from greaseweazle_gui.disk_formats import DISK_FORMATS
