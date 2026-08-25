@@ -43,12 +43,14 @@ The current application:
   requiring users to understand Greaseweazle command-line switches;
 - writes sector images using a content-detected or extension-guessed format,
   always asking for confirmation from the complete supported-format list;
-- writes SCP/A2R raw-flux images without lossy sector-format conversion; and
+- writes SCP/A2R raw-flux images without lossy sector-format conversion;
 - displays live cylinder, head, track and verification progress while writing;
 - inspects images offline, showing format, geometry, filesystem, volume,
   integrity, size, and SHA-256;
 - atomically converts images while preserving the source and warning before a
   potentially lossy raw-flux conversion;
+- recognises HxC HFE v1 and v3 images by header, writes their encoded tracks
+  directly, and creates or converts captures and blank media as `.hfe`;
 - compares captures by hash and changed track side, and optionally writes a
   JSON capture report with device/profile/provenance information;
 - catalogues a local image folder and identifies duplicate captures;
@@ -70,8 +72,9 @@ The current application:
 3. Automatic detection first reads only cylinder zero. Standard disks are then
    read directly as the correct image type; unusual disks fall back to a full
    lossless raw-flux capture.
-4. For extraction, choose where the detected sector image or raw `.scp` image
-   should be saved.
+4. For extraction, choose the native sector container or HxC HFE for a
+   recognised format, then choose where the image should be saved. Unusual or
+   protected media remains a raw `.scp` capture.
 5. **Extract Disk to Image** opens a completion result in the main window.
    Use the Back button to return to the start page.
    **Read disk** opens the image-backed directory browser; double-click folders
@@ -120,6 +123,12 @@ device details, and per-track results.
 Raw SCP and A2R captures are offered as **raw flux (no conversion)** so unusual
 tracks and copy protection are retained when written back.
 
+HxC HFE v1 and v3 images are identified from their container header and written
+as encoded tracks without forcing a sector format. HFE is also available as an
+output container when extracting, converting, or creating an image. These
+features use the bundled Greaseweazle HFE codec; the separate HxCFE application
+is not required or bundled.
+
 ## Creating a blank image
 
 1. Select **Create blank image** and choose a format from the complete,
@@ -129,6 +138,8 @@ tracks and copy protection are retained when written back.
 3. For Atari ST and AmigaDOS formats, leave **Create a ready-to-use filesystem**
    enabled and optionally set a volume label. Other formats are created as
    media-level blanks and clearly marked for initialisation on the target.
+4. Enable **Create as HxC HFE container** when the blank image is intended for
+   an HxC-compatible floppy emulator.
 
 ## Offline image tools
 
@@ -136,6 +147,11 @@ tracks and copy protection are retained when written back.
 detected geometry, filesystem/volume, integrity, and SHA-256. It can compare a
 second capture or, when the `gw` host tools are installed, convert to any
 creatable supported format. Source images are never modified.
+
+For HxC floppy emulators, enable the HFE output option after choosing the target
+machine format. HFE conversion needs both pieces of information: the disk
+format defines the track encoding and geometry, while `.hfe` selects the HxC
+container.
 
 **Image library** scans a chosen local folder read-only and groups duplicate
 images by SHA-256. Nothing is uploaded or stored outside that folder.
@@ -173,12 +189,12 @@ Greaseweazle Host Tools 1.23, and the official Linux device-access rules. GTK,
 libadwaita, and Python are installed or updated through the distribution package
 manager.
 
-1. Download `Greaseweazle-GUI_VERSION_ubuntu24.04_amd64.deb` and `SHA256SUMS`
+1. Download `Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb` and `SHA256SUMS`
    from the matching GitHub Release.
 2. From the download folder, run
    `sha256sum --check --ignore-missing SHA256SUMS`.
 3. Install with
-   `sudo apt install ./Greaseweazle-GUI_VERSION_ubuntu24.04_amd64.deb`.
+   `sudo apt install ./Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb`.
 4. Unplug and reconnect the Greaseweazle so the new device rule takes effect.
 5. Open **Greaseweazle-GUI** from the GNOME application grid, or run
    `greaseweazle-gui` from a terminal.
@@ -186,12 +202,13 @@ manager.
 Remove it with `sudo apt remove greaseweazlegui`. User disk images, capture
 reports, and application data are not removed.
 
-The Python wheel is also attached for developers. It does not install GTK,
-libadwaita, the Greaseweazle host tools, desktop metadata, or device rules, so
-normal desktop users should install the `.deb` package.
+The `greaseweazle_gui-0.2.0-py3-none-any.whl` wheel is also attached for
+developers. It does not install GTK, libadwaita, the Greaseweazle host tools,
+desktop metadata, or device rules, so normal desktop users should install the
+`.deb` package.
 
 Maintainers create a release by updating the version in `pyproject.toml`,
-merging the release commit, and pushing a matching tag such as `v0.1.0`. The
+merging the release commit, and pushing a matching tag such as `v0.2.0`. The
 release workflow tests the exact tag, builds and installs the package on Ubuntu
 24.04, generates SHA-256 checksums, and publishes all files to GitHub Releases.
 

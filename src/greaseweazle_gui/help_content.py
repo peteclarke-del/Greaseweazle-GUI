@@ -113,7 +113,7 @@ HELP_TOPICS = (
             HelpSection(
                 "Image choice",
                 (
-                    "Disk, Extract Disk to Image saves the complete disk rather than opening the temporary browser image. Standard Amiga disks use ADF, Atari ST disks use ST, Acorn DFS uses SSD or DSD, Commodore 1541 uses D64, and unusual media can be retained as SCP.",
+                    "Disk, Extract Disk to Image saves the complete disk rather than opening the temporary browser image. Standard Amiga disks use ADF, Atari ST disks use ST, Acorn DFS uses SSD or DSD, and Commodore 1541 uses D64. Recognised formats can instead be saved as HxC HFE, while unusual media is retained as SCP.",
                     "If automatic detection already captured SCP, later format analysis uses that capture. The physical disk is not read again simply to create a derived sector image.",
                 ),
                 (
@@ -172,7 +172,7 @@ HELP_TOPICS = (
                 "Before writing",
                 (
                     "Writing overwrites the floppy in the selected drive. The application inspects content first, then uses extension and size only as a fallback. You must confirm the final Greaseweazle format from the complete manufacturer-grouped list.",
-                    "SCP and A2R are offered as raw flux with no sector conversion. This preserves timing and protection data. Converting raw flux to a sector format can discard weak bits, deliberate errors, and nonstandard tracks.",
+                    "SCP and A2R are offered as raw flux with no sector conversion. HxC HFE v1 and v3 images are recognised from their headers and their encoded tracks are written directly. This preserves more track structure than forcing a sector decode, although HFE is not a multi-revolution preservation replacement for SCP or A2R.",
                 ),
                 (
                     "Choose Disk, Write Image to Disk and select the source image.",
@@ -206,6 +206,7 @@ HELP_TOPICS = (
                 (
                     "Choose the exact machine and geometry.",
                     "Review whether filesystem creation is supported.",
+                    "Enable Create as HxC HFE container when preparing media for an HxC-compatible floppy emulator.",
                     "Choose the destination filename. The correct suffix is supplied.",
                     "Wait for Image Created. The destination is atomically replaced only after successful creation.",
                 ),
@@ -229,6 +230,7 @@ HELP_TOPICS = (
                 "Conversion",
                 (
                     "Convert creates a new file through the installed Greaseweazle codecs. The source is not modified, and the destination is replaced atomically only after a successful conversion. Choose a format that is compatible with the information present in the source.",
+                    "Enable HxC HFE output to create an emulator-ready .hfe container after selecting its machine format and geometry. HFE images can also be inspected, catalogued, converted back to sector images, and written directly. The separate HxCFE program is not required.",
                     "A sector image cannot represent arbitrary flux timing, weak bits, or some protection schemes. Keep the original SCP or A2R whenever converting raw media.",
                 ),
             ),

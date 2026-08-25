@@ -4,7 +4,8 @@ Only the repository maintainer publishes a release.
 
 ## Prepare the source
 
-1. Update `project.version` in `pyproject.toml`.
+1. Update `project.version` in `pyproject.toml` and `__version__` in
+   `src/greaseweazle_gui/__init__.py`.
 2. Review the pinned Greaseweazle version in
    `packaging/greaseweazle-version.txt`, its source archive checksum in
    `packaging/greaseweazle-source.sha256`, and the Python dependencies in
@@ -30,9 +31,14 @@ Only the repository maintainer publishes a release.
 On Ubuntu 24.04 with Python 3.12:
 
 ```sh
+python3 -m pip install build
+python3 -m build --wheel --outdir dist
 ./packaging/build-deb.sh dist
-dpkg-deb --info dist/*.deb
-dpkg-deb --contents dist/*.deb
+dpkg-deb --info dist/Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb
+dpkg-deb --contents dist/Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb
+cd dist
+sha256sum Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb \
+  greaseweazle_gui-0.2.0-py3-none-any.whl > SHA256SUMS
 ```
 
 The build downloads the tagged Greaseweazle source archive, rejects it unless
@@ -46,8 +52,8 @@ Merge the reviewed release pull request, then create and push a tag that exactly
 matches the project version:
 
 ```sh
-git tag -s v0.1.0 -m "Greaseweazle-GUI v0.1.0"
-git push origin v0.1.0
+git tag -s v0.2.0 -m "Greaseweazle-GUI v0.2.0"
+git push origin v0.2.0
 ```
 
 The release workflow verifies the version, runs the tests, builds the wheel and

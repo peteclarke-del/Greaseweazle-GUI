@@ -14,6 +14,8 @@ class DiskFormat:
     cylinders: int
     heads: int
     sectors_per_track: int
+    direct_write: bool = False
+    raw_flux: bool = False
 
     @property
     def track_count(self) -> int:
@@ -91,4 +93,6 @@ RAW_FLUX_FORMAT = DiskFormat(
     84,
     2,
     0,
+    True,
+    True,
 )

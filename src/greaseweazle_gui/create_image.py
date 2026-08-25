@@ -102,6 +102,11 @@ def create_blank_image(
         work_directory = Path(temporary)
         source = work_directory / "empty.img"
         output = work_directory / f"blank{destination.suffix}"
+        media_output = (
+            work_directory / f"blank-native{disk_format.suffix}"
+            if initialise and destination.suffix.lower() == ".hfe"
+            else output
+        )
         source.touch()
         command = [
             executable,
@@ -109,7 +114,7 @@ def create_blank_image(
             "--format",
             disk_format.gw_format,
             str(source),
-            str(output),
+            str(media_output),
         ]
 
         def process_line(line: str) -> None:
@@ -143,7 +148,7 @@ def create_blank_image(
                 "Greaseweazle could not create this image format.",
                 diagnostic,
             )
-        if not output.is_file() or output.stat().st_size == 0:
+        if not media_output.is_file() or media_output.stat().st_size == 0:
             return CreateImageResult(
                 False,
                 "Greaseweazle finished without creating a usable image.",
@@ -152,12 +157,45 @@ def create_blank_image(
         filesystem: str | None = None
         if initialise:
             try:
-                filesystem = initialise_filesystem(output, disk_format, volume_label)
+                filesystem = initialise_filesystem(
+                    media_output, disk_format, volume_label
+                )
             except (OSError, FilesystemFormatError) as error:
                 return CreateImageResult(
                     False,
                     "The media image was created, but its filesystem could not be initialised.",
                     str(error),
+                )
+        if media_output != output:
+            try:
+                hfe_result = run_streaming_process(
+                    [
+                        executable,
+                        "convert",
+                        "--format",
+                        disk_format.gw_format,
+                        str(media_output),
+                        str(output),
+                    ],
+                    timeout=timeout,
+                    on_line=process_line,
+                    controller=controller,
+                    process_factory=subprocess.Popen,
+                )
+            except OSError as error:
+                return CreateImageResult(
+                    False, "The HFE container could not be created.", str(error)
+                )
+            diagnostic = f"{diagnostic}\n{hfe_result.output}".strip()
+            if (
+                hfe_result.cancelled
+                or hfe_result.timed_out
+                or hfe_result.return_code != 0
+                or not output.is_file()
+                or output.stat().st_size == 0
+            ):
+                return CreateImageResult(
+                    False, "The HFE container could not be created.", diagnostic
                 )
         try:
             os.replace(output, destination)
