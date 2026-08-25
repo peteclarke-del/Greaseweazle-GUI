@@ -156,7 +156,7 @@ HELP_TOPICS = (
                 "Supported filesystems",
                 (
                     "Greaseweazle low-level format support and directory browsing are separate. The application can capture every format advertised by the installed host tools, but a normal file listing is possible only when the decoded image contains a filesystem understood by an installed reader.",
-                    "The built-in bounded readers cover AmigaDOS OFS and FFS, Atari TOS and compatible FAT12 IMG or IMA images, Acorn DFS SSD and DSD, and Commodore 1541 D64. This includes suitable PC, MS-DOS, and other FAT12 sector images. Other formats can still be captured, inspected, converted, hashed, and written without presenting an empty or invented directory.",
+                    "The built-in bounded readers cover AmigaDOS OFS and FFS; Atari TOS, PC DOS, and compatible FAT12; Acorn DFS and ADFS S, M, and L; Commodore 1541 DOS; Tandy Color Disk BASIC; and Tandy or Dragon OS-9 RBF. Shared IMG files are identified from their filesystem structures. Other formats can still be captured, inspected, converted, hashed, and written without presenting an empty or invented directory.",
                 ),
             ),
         ),
@@ -321,7 +321,7 @@ HELP_TOPICS = (
                 "Disk and filesystem problems",
                 (
                     "Wrong geometry usually causes missing sectors on many tracks or an image size that does not match its format. A healthy track map with a directory error can instead indicate copy protection or a deliberately nonstandard filesystem. Preserve SCP before experimenting.",
-                    "A looping FAT chain, recursive directory, overlapping DFS files, or invalid Commodore sector pointer is rejected to prevent corrupt metadata from causing an unbounded read or unsafe extraction.",
+                    "A looping allocation chain, recursive directory, overlapping extent, or invalid sector pointer is rejected to prevent corrupt metadata from causing an unbounded read or unsafe extraction.",
                 ),
             ),
             HelpSection(
@@ -342,7 +342,7 @@ HELP_TOPICS = (
             HelpSection(
                 "Application menus",
                 (
-                    "File contains Open Disk Image, Inspect or Convert Image, Image Library, Create Blank Image, and Quit. Disk contains Read and Browse Disk, Extract Disk to Image, and Write Image to Disk. Drive contains drive A or B, spindle speed, USB bandwidth, cleaning, and reconnection. Help contains this User Guide and the Diagnostic Log.",
+                    "File contains Open Disk Image, Inspect or Convert Image, Image Library, Create Blank Image, and Quit. Disk contains Read and Browse Disk, Extract Disk to Image, and Write Image to Disk. Drive contains drive A or B, spindle speed, USB bandwidth, cleaning, and reconnection. Help contains this User Guide, the Diagnostic Log, and About with application version and project links.",
                 ),
             ),
             HelpSection(

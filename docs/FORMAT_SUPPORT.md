@@ -20,7 +20,10 @@ filesystem, or that Greaseweazle-GUI understands that filesystem.
 | AmigaDOS OFS and FFS | `.adf`, `.hfe`, `.scp`, `.a2r` | Directories and files are read lazily. DD and HD images are accepted. Track containers are decoded to a temporary ADF. |
 | FAT12 | `.st`, `.img`, `.ima`, `.hfe`, `.scp`, `.a2r` | Atari TOS, PC, MS-DOS, and other compatible FAT12 images can be browsed. Long names and nested directories are bounded. Track containers are decoded to a temporary sector image. |
 | Acorn DFS | `.ssd`, `.dsd`, `.hfe`, `.scp`, `.a2r` | Single-sided and interleaved double-sided catalogues can be browsed, including from decoded track containers. |
+| Acorn ADFS S, M, and L | `.adm`, `.ads`, `.adl`, `.hfe`, `.scp`, `.a2r` | Old-map directories, nested folders, and contiguous files are browsed with bounds and loop checks. |
 | Commodore 1541 DOS | `.d64`, `.hfe`, `.scp`, `.a2r` | Standard 35-track images, with or without error bytes, can be browsed, including from decoded track containers. |
+| Tandy Color Disk BASIC | `.img`, `.hfe`, `.scp`, `.a2r` | 35- and 40-track DECB directories and granule chains are validated and browsed. |
+| OS-9 RBF | `.img`, `.hfe`, `.scp`, `.a2r` | Tandy Color Computer and Dragon Data OS-9 files, extents, and nested directories are browsed by content. |
 
 These readers reject allocation loops, recursive directory chains, invalid
 sector pointers, overlapping files, impossible sizes, and truncated images.
@@ -69,5 +72,5 @@ without another physical read. A user who knows another machine family should
 select its exact Greaseweazle format from the manufacturer menu.
 
 Filesystem coverage is deliberately expanded one reader at a time. Planned
-families include ADFS, Apple DOS, ProDOS, CP/M, and other documented layouts
+families include Apple DOS, ProDOS, CP/M, DragonDOS, and other documented layouts
 that can be parsed with strict bounds and deterministic corruption tests.

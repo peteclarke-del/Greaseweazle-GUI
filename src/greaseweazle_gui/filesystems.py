@@ -65,6 +65,21 @@ def filesystem_readers() -> tuple[FilesystemReader, ...]:
             lambda data, suffix: _AcornDfsImage(data, suffix).open(),
         ),
         FilesystemReader(
+            "Acorn ADFS",
+            (".adm", ".ads", ".adl"),
+            lambda data, suffix: _AcornAdfsOldMapImage(data, suffix).open(),
+        ),
+        FilesystemReader(
+            "Tandy Color Disk BASIC",
+            (".img",),
+            lambda data, _suffix: _TandyDecbImage(data).open(),
+        ),
+        FilesystemReader(
+            "OS-9 RBF",
+            (".img",),
+            lambda data, _suffix: _Os9RbfImage(data).open(),
+        ),
+        FilesystemReader(
             "Commodore DOS",
             (".d64",),
             lambda data, _suffix: _CommodoreD64Image(data).open(),
@@ -83,9 +98,15 @@ def open_image(image_path: Path) -> DiskContents:
     """Read directory metadata without extracting file contents."""
     data = image_path.read_bytes()
     suffix = image_path.suffix.lower()
+    errors: list[str] = []
     for reader in filesystem_readers():
         if suffix in reader.suffixes:
-            return reader.opener(data, suffix)
+            try:
+                return reader.opener(data, suffix)
+            except FilesystemError as error:
+                errors.append(f"{reader.name}: {error}")
+    if errors:
+        raise FilesystemError("\n".join(errors))
     raise FilesystemError(
         f"Browsing {suffix or 'this image format'} is not supported yet."
     )
@@ -214,6 +235,290 @@ class _AcornDfsImage:
                 )
             )
         return DiskContents(title, tuple(result), "Acorn DFS")
+
+
+class _AcornAdfsOldMapImage:
+    """Reader for the Acorn ADFS S, M, and L old-map filesystems."""
+
+    SECTOR_SIZE = 256
+    DIRECTORY_SIZE = 5 * SECTOR_SIZE
+    IMAGE_SIZES = {".adm": 160 * 1024, ".ads": 320 * 1024, ".adl": 640 * 1024}
+
+    def __init__(self, data: bytes, suffix: str) -> None:
+        expected = self.IMAGE_SIZES[suffix]
+        if len(data) != expected:
+            raise FilesystemError("The ADFS image has an invalid size.")
+        self.data = data
+        declared_sectors = int.from_bytes(data[0xFC:0xFF], "little")
+        if declared_sectors != expected // self.SECTOR_SIZE:
+            raise FilesystemError("The ADFS free-space map has an invalid disk size.")
+
+    @staticmethod
+    def _name(raw: bytes) -> str:
+        name = bytes(byte & 0x7F for byte in raw).split(b"\r", 1)[0]
+        return _safe_name(name.decode("latin-1", errors="replace"))
+
+    def open(self) -> DiskContents:
+        root = self._directory(2)
+        label = self._name(root[0x4D9:0x4EC])
+        entries = self._read_directory(2, {2}, 0)
+        return DiskContents(label or "Acorn ADFS disk", entries, "Acorn ADFS")
+
+    def _directory(self, sector: int) -> bytes:
+        start = sector * self.SECTOR_SIZE
+        end = start + self.DIRECTORY_SIZE
+        if sector < 2 or end > len(self.data):
+            raise FilesystemError("An ADFS directory points outside the image.")
+        directory = self.data[start:end]
+        if directory[1:5] != b"Hugo" or directory[0x4FB:0x4FF] != b"Hugo":
+            raise FilesystemError("The ADFS directory signature is invalid.")
+        return directory
+
+    def _read_directory(
+        self, sector: int, visited: set[int], depth: int
+    ) -> tuple[ImageEntry, ...]:
+        if depth > 64:
+            raise FilesystemError("The ADFS directory tree is too deeply nested.")
+        directory = self._directory(sector)
+        entries: list[ImageEntry] = []
+        used_names: set[str] = set()
+        for index in range(47):
+            entry = directory[5 + index * 26 : 5 + (index + 1) * 26]
+            if not entry[0]:
+                continue
+            name = _unique_name(self._name(entry[:10]), used_names)
+            length = int.from_bytes(entry[18:22], "little")
+            start_sector = int.from_bytes(entry[22:25], "little")
+            is_directory = bool(entry[3] & 0x80)
+            start = start_sector * self.SECTOR_SIZE
+            end = start + length
+            if start_sector < 2 or end > len(self.data):
+                raise FilesystemError(f"{name} points outside the ADFS image.")
+            if is_directory:
+                if length != self.DIRECTORY_SIZE:
+                    raise FilesystemError(f"{name} has an invalid directory size.")
+                if start_sector in visited:
+                    raise FilesystemError("The ADFS image contains a directory loop.")
+                visited.add(start_sector)
+                children = self._read_directory(start_sector, visited, depth + 1)
+                entries.append(ImageEntry(name, True, children=children))
+            else:
+                entries.append(
+                    ImageEntry(
+                        name,
+                        False,
+                        size=length,
+                        _reader=lambda begin=start, finish=end: self.data[begin:finish],
+                    )
+                )
+        return tuple(entries)
+
+
+class _TandyDecbImage:
+    """Reader for Tandy Color Computer Disk Extended Color BASIC images."""
+
+    SECTOR_SIZE = 256
+    SECTORS_PER_TRACK = 18
+    GRANULE_SIZE = 9 * SECTOR_SIZE
+
+    def __init__(self, data: bytes) -> None:
+        track_size = self.SECTORS_PER_TRACK * self.SECTOR_SIZE
+        if len(data) not in {35 * track_size, 40 * track_size}:
+            raise FilesystemError("The Color Disk BASIC image has an invalid size.")
+        self.data = data
+        directory_track = 17 * track_size
+        self.gat = data[
+            directory_track + self.SECTOR_SIZE : directory_track + 2 * self.SECTOR_SIZE
+        ]
+        self.directory = data[
+            directory_track + 2 * self.SECTOR_SIZE : directory_track
+            + 11 * self.SECTOR_SIZE
+        ]
+        if any(
+            marker >= 68 and marker not in {*range(0xC1, 0xCA), 0xFF}
+            for marker in self.gat[:68]
+        ):
+            raise FilesystemError("The Color Disk BASIC allocation table is invalid.")
+
+    def open(self) -> DiskContents:
+        entries: list[ImageEntry] = []
+        used_names: set[str] = set()
+        for offset in range(0, len(self.directory), 32):
+            entry = self.directory[offset : offset + 32]
+            if entry[0] == 0xFF:
+                break
+            if entry[0] in {0, 0xFF}:
+                continue
+            base = entry[:8].decode("ascii", errors="replace").rstrip(" \0")
+            extension = entry[8:11].decode("ascii", errors="replace").rstrip(" \0")
+            name = _unique_name(
+                f"{base}.{extension}" if extension else base, used_names
+            )
+            first = entry[13]
+            last_bytes = int.from_bytes(entry[14:16], "big")
+            content = self._read_chain(first, last_bytes, name)
+            entries.append(
+                ImageEntry(
+                    name,
+                    False,
+                    size=len(content),
+                    _reader=lambda value=content: value,
+                )
+            )
+        if not entries and self.directory[:1] != b"\xff":
+            raise FilesystemError("The Color Disk BASIC directory is invalid.")
+        return DiskContents(
+            "Tandy Color Disk BASIC disk", tuple(entries), "Tandy Color Disk BASIC"
+        )
+
+    def _granule(self, number: int) -> bytes:
+        if number >= 68:
+            raise FilesystemError("A Color Disk BASIC file uses an invalid granule.")
+        track = number // 2
+        if track >= 17:
+            track += 1
+        sector = (number & 1) * 9
+        start = (track * self.SECTORS_PER_TRACK + sector) * self.SECTOR_SIZE
+        return self.data[start : start + self.GRANULE_SIZE]
+
+    def _read_chain(self, first: int, last_bytes: int, name: str) -> bytes:
+        chunks: list[bytes] = []
+        visited: set[int] = set()
+        granule = first
+        while granule < 0xC0:
+            if granule >= 68 or granule in visited:
+                raise FilesystemError(f"{name} has an invalid granule chain.")
+            visited.add(granule)
+            block = self._granule(granule)
+            marker = self.gat[granule]
+            if marker >= 0xC0:
+                sectors = marker & 0x0F
+                if not 1 <= sectors <= 9 or not 0 <= last_bytes <= self.SECTOR_SIZE:
+                    raise FilesystemError(f"{name} has an invalid final granule.")
+                used = (sectors - 1) * self.SECTOR_SIZE + (
+                    last_bytes or self.SECTOR_SIZE
+                )
+                chunks.append(block[:used])
+                break
+            chunks.append(block)
+            granule = marker
+        else:
+            raise FilesystemError(f"{name} has an invalid first granule.")
+        return b"".join(chunks)
+
+
+class _Os9RbfImage:
+    """Reader for the OS-9 RBF filesystem used by Tandy and Dragon systems."""
+
+    SECTOR_SIZE = 256
+
+    def __init__(self, data: bytes) -> None:
+        if len(data) < 3 * self.SECTOR_SIZE or len(data) % self.SECTOR_SIZE:
+            raise FilesystemError("The OS-9 image has an invalid size.")
+        self.data = data
+        identification = data[: self.SECTOR_SIZE]
+        self.total_sectors = int.from_bytes(identification[0:3], "big")
+        self.root_descriptor = int.from_bytes(identification[8:11], "big")
+        sectors_per_track = identification[3]
+        if (
+            self.total_sectors != len(data) // self.SECTOR_SIZE
+            or not sectors_per_track
+            or not 2 <= self.root_descriptor < self.total_sectors
+        ):
+            raise FilesystemError("The OS-9 identification sector is invalid.")
+        self.label = self._terminated_name(identification[0x1F:0x3F])
+
+    @staticmethod
+    def _terminated_name(raw: bytes) -> str:
+        result = bytearray()
+        for byte in raw:
+            if byte == 0:
+                break
+            result.append(byte & 0x7F)
+            if byte & 0x80:
+                break
+        return _safe_name(result.decode("latin-1", errors="replace"))
+
+    def _descriptor(self, sector: int) -> tuple[bytes, int, bool]:
+        start = sector * self.SECTOR_SIZE
+        if sector < 2 or start + self.SECTOR_SIZE > len(self.data):
+            raise FilesystemError("An OS-9 file descriptor points outside the image.")
+        descriptor = self.data[start : start + self.SECTOR_SIZE]
+        size = int.from_bytes(descriptor[9:13], "big")
+        return descriptor, size, bool(descriptor[0] & 0x80)
+
+    def _read_file(self, descriptor: bytes, size: int) -> bytes:
+        chunks: list[bytes] = []
+        covered = 0
+        ranges: list[tuple[int, int]] = []
+        for offset in range(0x10, self.SECTOR_SIZE, 5):
+            first = int.from_bytes(descriptor[offset : offset + 3], "big")
+            count = int.from_bytes(descriptor[offset + 3 : offset + 5], "big")
+            if first == 0 and count == 0:
+                break
+            end_sector = first + count
+            if not count or first < 2 or end_sector > self.total_sectors:
+                raise FilesystemError("An OS-9 extent points outside the image.")
+            for previous_first, previous_end in ranges:
+                if max(first, previous_first) < min(end_sector, previous_end):
+                    raise FilesystemError("An OS-9 file contains overlapping extents.")
+            ranges.append((first, end_sector))
+            chunks.append(
+                self.data[first * self.SECTOR_SIZE : end_sector * self.SECTOR_SIZE]
+            )
+            covered += count * self.SECTOR_SIZE
+        if size > covered:
+            raise FilesystemError("An OS-9 file is larger than its allocated extents.")
+        return b"".join(chunks)[:size]
+
+    def open(self) -> DiskContents:
+        descriptor, _size, is_directory = self._descriptor(self.root_descriptor)
+        if not is_directory:
+            raise FilesystemError("The OS-9 root descriptor is not a directory.")
+        entries = self._read_directory(self.root_descriptor, {self.root_descriptor}, 0)
+        return DiskContents(self.label or "OS-9 disk", entries, "OS-9 RBF")
+
+    def _read_directory(
+        self, descriptor_sector: int, visited: set[int], depth: int
+    ) -> tuple[ImageEntry, ...]:
+        if depth > 64:
+            raise FilesystemError("The OS-9 directory tree is too deeply nested.")
+        descriptor, size, is_directory = self._descriptor(descriptor_sector)
+        if not is_directory:
+            raise FilesystemError("An OS-9 directory entry points to a file.")
+        directory = self._read_file(descriptor, size)
+        entries: list[ImageEntry] = []
+        used_names: set[str] = set()
+        for offset in range(0, len(directory) - 31, 32):
+            entry = directory[offset : offset + 32]
+            if not entry[0]:
+                continue
+            name = self._terminated_name(entry[:29])
+            if name in {".", ".."}:
+                continue
+            name = _unique_name(name, used_names)
+            child_sector = int.from_bytes(entry[29:32], "big")
+            child_descriptor, child_size, child_is_directory = self._descriptor(
+                child_sector
+            )
+            if child_is_directory:
+                if child_sector in visited:
+                    raise FilesystemError("The OS-9 image contains a directory loop.")
+                visited.add(child_sector)
+                children = self._read_directory(child_sector, visited, depth + 1)
+                entries.append(ImageEntry(name, True, children=children))
+            else:
+                entries.append(
+                    ImageEntry(
+                        name,
+                        False,
+                        size=child_size,
+                        _reader=lambda block=child_descriptor, length=child_size: (
+                            self._read_file(block, length)
+                        ),
+                    )
+                )
+        return tuple(entries)
 
 
 class _CommodoreD64Image:

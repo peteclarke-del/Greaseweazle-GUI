@@ -35,7 +35,17 @@ def _decode_candidates(source: Path) -> tuple[DiskFormat, ...]:
         for disk_format in supported_formats()
         if disk_format.gw_format and disk_format.suffix in browsable_suffixes()
     )
-    priority = {".adf": 0, ".st": 1, ".ssd": 2, ".dsd": 2, ".d64": 3, ".img": 4}
+    priority = {
+        ".adf": 0,
+        ".adm": 1,
+        ".ads": 1,
+        ".adl": 1,
+        ".ssd": 2,
+        ".dsd": 2,
+        ".st": 3,
+        ".d64": 4,
+        ".img": 5,
+    }
     candidates = tuple(
         sorted(candidates, key=lambda item: (priority[item.suffix], item.gw_format))
     )
@@ -95,7 +105,8 @@ def open_browsable_image(
             tracks=f"c=0:h=0-{disk_format.heads - 1}",
         )
         recovered, _ratio = conversion_score(probe_result.diagnostic, disk_format)
-        if not probe_result.succeeded or recovered == 0:
+        minimum_recovered = max(1, disk_format.sectors_per_track // 2)
+        if not probe_result.succeeded or recovered < minimum_recovered:
             diagnostics.append(
                 f"{disk_format.label}: "
                 f"{probe_result.diagnostic or probe_result.summary}"

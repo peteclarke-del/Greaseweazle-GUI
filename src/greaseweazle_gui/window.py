@@ -15,6 +15,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
+from . import __version__
 from .branding import APPLICATION_NAME, APPLICATION_SUBTITLE
 from .browse_image import browsable_image_suffixes, open_browsable_image
 from .browser import DiskBrowser
@@ -154,6 +155,7 @@ class MainWindow(Adw.ApplicationWindow):
             "bandwidth": lambda: self._start_hardware_tool("bandwidth"),
             "clean": lambda: self._confirm_drive_clean(None),
             "help": self._show_help,
+            "about": self._show_about,
             "diagnostics": lambda: self._show_diagnostic_log(None),
             "quit": self.close,
         }
@@ -219,6 +221,7 @@ class MainWindow(Adw.ApplicationWindow):
         help_menu = Gio.Menu()
         help_menu.append("User Guide", "win.help")
         help_menu.append("Diagnostic Log", "win.diagnostics")
+        help_menu.append("About Greaseweazle-GUI", "win.about")
         root.append_submenu("Help", help_menu)
         return root
 
@@ -229,6 +232,24 @@ class MainWindow(Adw.ApplicationWindow):
             "Operations, preservation guidance, and technical reference",
             HelpView(),
         )
+
+    def _show_about(self) -> None:
+        about = Adw.AboutWindow(
+            transient_for=self,
+            modal=True,
+            application_name=APPLICATION_NAME,
+            application_icon="com.github.pclarke.GreaseweazleGUI",
+            developer_name="Pete Clarke",
+            version=__version__,
+            comments="A native GNOME interface for Greaseweazle disk imaging and preservation.",
+            website="https://github.com/peteclarke-del/Greaseweazle-GUI",
+            support_url="https://github.com/peteclarke-del/Greaseweazle-GUI/discussions",
+            issue_url="https://github.com/peteclarke-del/Greaseweazle-GUI/issues",
+            developers=["Pete Clarke"],
+            copyright="Copyright 2026 Pete Clarke",
+            license_type=Gtk.License.GPL_3_0,
+        )
+        about.present()
 
     def _build_checking_page(self) -> Gtk.Widget:
         page = Adw.StatusPage()
