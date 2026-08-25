@@ -569,6 +569,7 @@ class MainWindow(Adw.ApplicationWindow):
             "*.d2m",
             "*.d4m",
             "*.sf7",
+            "*.hfe",
         ):
             image_filter.add_pattern(pattern)
         chooser.add_filter(image_filter)
@@ -752,12 +753,16 @@ class MainWindow(Adw.ApplicationWindow):
             (
                 "The source image is never modified. Converting raw flux to a sector "
                 "image can discard protection, weak bits, and timing information."
-                if inspection.path.suffix.lower() in {".scp", ".a2r"}
-                else "The source image is never modified. Choose a compatible destination format."
+                if inspection.path.suffix.lower() in {".scp", ".a2r", ".hfe"}
+                else (
+                    "The source image is never modified. Choose a compatible "
+                    "destination format."
+                )
             ),
         )
         selected: list[str | None] = [None]
-        dialog.set_extra_child(
+        options = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        options.append(
             self._build_format_selector(
                 dialog,
                 selected,
@@ -765,6 +770,9 @@ class MainWindow(Adw.ApplicationWindow):
                 excluded_formats=NON_CREATABLE_FORMATS,
             )
         )
+        hfe_output = Gtk.CheckButton(label="Save as HxC HFE container (.hfe)")
+        options.append(hfe_output)
+        dialog.set_extra_child(options)
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("continue", "Choose location")
         dialog.set_response_enabled("continue", False)
@@ -776,13 +784,17 @@ class MainWindow(Adw.ApplicationWindow):
             target = next(
                 item for item in supported_formats() if item.gw_format == selected[0]
             )
-            self._choose_conversion_location(inspection.path, target)
+            self._choose_conversion_location(
+                inspection.path,
+                target,
+                ".hfe" if hfe_output.get_active() else target.suffix,
+            )
 
         dialog.connect("response", respond)
         dialog.present()
 
     def _choose_conversion_location(
-        self, source: Path, target_format: DiskFormat
+        self, source: Path, target_format: DiskFormat, output_suffix: str
     ) -> None:
         chooser = Gtk.FileChooserNative.new(
             "Save converted image",
@@ -791,8 +803,14 @@ class MainWindow(Adw.ApplicationWindow):
             "Convert",
             "Cancel",
         )
-        chooser.set_current_name(f"{source.stem}{target_format.suffix}")
-        chooser.connect("response", self._on_conversion_location, source, target_format)
+        chooser.set_current_name(f"{source.stem}{output_suffix}")
+        chooser.connect(
+            "response",
+            self._on_conversion_location,
+            source,
+            target_format,
+            output_suffix,
+        )
         self._file_chooser = chooser
         chooser.show()
 
@@ -802,6 +820,7 @@ class MainWindow(Adw.ApplicationWindow):
         response: int,
         source: Path,
         target_format: DiskFormat,
+        output_suffix: str,
     ) -> None:
         self._file_chooser = None
         if response != Gtk.ResponseType.ACCEPT:
@@ -814,8 +833,8 @@ class MainWindow(Adw.ApplicationWindow):
             )
             return
         destination = Path(selected_path)
-        if destination.suffix.lower() != target_format.suffix:
-            destination = destination.with_suffix(target_format.suffix)
+        if destination.suffix.lower() != output_suffix:
+            destination = destination.with_suffix(output_suffix)
         self._start_conversion(source, destination, target_format)
 
     def _start_conversion(
@@ -1076,6 +1095,7 @@ class MainWindow(Adw.ApplicationWindow):
             "*.d2m",
             "*.d4m",
             "*.sf7",
+            "*.hfe",
         ):
             image_filter.add_pattern(pattern)
         chooser.add_filter(image_filter)
@@ -1113,6 +1133,7 @@ class MainWindow(Adw.ApplicationWindow):
             text="BLANK",
             sensitive=False,
         )
+        hfe_output = Gtk.CheckButton(label="Create as HxC HFE container (.hfe)")
 
         def format_selected(format_name: str) -> None:
             disk_format = next(
@@ -1139,6 +1160,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         options.append(initialise)
         options.append(volume_label)
+        options.append(hfe_output)
         options.append(filesystem_note)
         dialog.set_extra_child(options)
         dialog.add_response("cancel", "Cancel")
@@ -1160,13 +1182,18 @@ class MainWindow(Adw.ApplicationWindow):
                     disk_format,
                     initialise.get_active(),
                     volume_label.get_text(),
+                    ".hfe" if hfe_output.get_active() else disk_format.suffix,
                 )
 
         dialog.connect("response", respond)
         dialog.present()
 
     def _choose_blank_location(
-        self, disk_format: DiskFormat, initialise: bool, volume_label: str
+        self,
+        disk_format: DiskFormat,
+        initialise: bool,
+        volume_label: str,
+        output_suffix: str,
     ) -> None:
         chooser = Gtk.FileChooserNative.new(
             "Save blank disk image",
@@ -1175,10 +1202,10 @@ class MainWindow(Adw.ApplicationWindow):
             "Create image",
             "Cancel",
         )
-        chooser.set_current_name(f"blank{disk_format.suffix}")
+        chooser.set_current_name(f"blank{output_suffix}")
         image_filter = Gtk.FileFilter()
-        image_filter.set_name(f"{disk_format.label} image (*{disk_format.suffix})")
-        image_filter.add_pattern(f"*{disk_format.suffix}")
+        image_filter.set_name(f"Disk image (*{output_suffix})")
+        image_filter.add_pattern(f"*{output_suffix}")
         chooser.add_filter(image_filter)
         chooser.connect(
             "response",
@@ -1186,6 +1213,7 @@ class MainWindow(Adw.ApplicationWindow):
             disk_format,
             initialise,
             volume_label,
+            output_suffix,
         )
         self._file_chooser = chooser
         chooser.show()
@@ -1197,6 +1225,7 @@ class MainWindow(Adw.ApplicationWindow):
         disk_format: DiskFormat,
         initialise: bool,
         volume_label: str,
+        output_suffix: str,
     ) -> None:
         self._file_chooser = None
         if response != Gtk.ResponseType.ACCEPT:
@@ -1210,8 +1239,8 @@ class MainWindow(Adw.ApplicationWindow):
             )
             return
         destination = Path(selected_path)
-        if destination.suffix.lower() != disk_format.suffix:
-            destination = destination.with_suffix(disk_format.suffix)
+        if destination.suffix.lower() != output_suffix:
+            destination = destination.with_suffix(output_suffix)
         self._start_blank_creation(destination, disk_format, initialise, volume_label)
 
     def _start_blank_creation(
@@ -1396,14 +1425,20 @@ class MainWindow(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def _start_write(self, image_path: Path, disk_format: DiskFormat) -> None:
-        can_verify = bool(disk_format.gw_format)
+        can_verify = bool(disk_format.gw_format) and not disk_format.direct_write
         self._reading_page.set_title(f"Writing {disk_format.label}…")
         self._reading_page.set_description(
             "Keep the drive connected and do not remove the disk. "
             + (
                 "Each track is verified."
                 if can_verify
-                else "Raw flux will be written directly; sector verification is unavailable."
+                else (
+                    "Raw flux will be written directly; sector verification is "
+                    "unavailable."
+                    if disk_format.raw_flux
+                    else "Encoded HFE tracks will be written directly; sector "
+                    "verification is unavailable."
+                )
             )
         )
         self._read_progress.set_fraction(0)
@@ -1816,6 +1851,39 @@ class MainWindow(Adw.ApplicationWindow):
         temporary: tempfile.TemporaryDirectory[str],
     ) -> None:
         suffix = detection.disk_format.suffix if detection.disk_format else ".scp"
+        if detection.disk_format is not None and detection.disk_format.gw_format:
+            dialog = Adw.MessageDialog.new(
+                self,
+                "Choose image container",
+                "Keep the format's native sector image or create an HxC HFE "
+                "track image.",
+            )
+            dialog.add_response("cancel", "Cancel")
+            dialog.add_response("native", f"Native ({suffix})")
+            dialog.add_response("hfe", "HxC HFE (.hfe)")
+            dialog.set_response_appearance("native", Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_default_response("native")
+            dialog.set_close_response("cancel")
+
+            def respond(_dialog: Adw.MessageDialog, response: str) -> None:
+                if response == "cancel":
+                    temporary.cleanup()
+                    return
+                self._choose_detected_location_for_suffix(
+                    detection, temporary, ".hfe" if response == "hfe" else suffix
+                )
+
+            dialog.connect("response", respond)
+            dialog.present()
+            return
+        self._choose_detected_location_for_suffix(detection, temporary, suffix)
+
+    def _choose_detected_location_for_suffix(
+        self,
+        detection: DetectionResult,
+        temporary: tempfile.TemporaryDirectory[str],
+        suffix: str,
+    ) -> None:
         chooser = Gtk.FileChooserNative.new(
             "Save detected disk image",
             self,
@@ -1829,7 +1897,11 @@ class MainWindow(Adw.ApplicationWindow):
         image_filter.add_pattern(f"*{suffix}")
         chooser.add_filter(image_filter)
         chooser.connect(
-            "response", self._on_detected_image_location, detection, temporary
+            "response",
+            self._on_detected_image_location,
+            detection,
+            temporary,
+            suffix,
         )
         self._file_chooser = chooser
         chooser.show()
@@ -1840,6 +1912,7 @@ class MainWindow(Adw.ApplicationWindow):
         response: int,
         detection: DetectionResult,
         temporary: tempfile.TemporaryDirectory[str],
+        suffix: str,
     ) -> None:
         self._file_chooser = None
         if response != Gtk.ResponseType.ACCEPT:
@@ -1856,7 +1929,6 @@ class MainWindow(Adw.ApplicationWindow):
                 "Greaseweazle images must be saved to a local filesystem path.",
             )
             return
-        suffix = detection.disk_format.suffix if detection.disk_format else ".scp"
         destination = Path(path)
         if destination.suffix.lower() != suffix:
             destination = destination.with_suffix(suffix)
@@ -1865,7 +1937,14 @@ class MainWindow(Adw.ApplicationWindow):
 
         def save_worker() -> None:
             try:
-                shutil.copy2(detection.image_path, destination)
+                if suffix == ".hfe" and detection.disk_format is not None:
+                    result = convert_image(
+                        detection.image_path, destination, detection.disk_format
+                    )
+                    if not result.succeeded:
+                        raise OSError(result.diagnostic or result.summary)
+                else:
+                    shutil.copy2(detection.image_path, destination)
             except OSError as error:
                 GLib.idle_add(
                     self._finish_image_save_error,
@@ -1909,7 +1988,8 @@ class MainWindow(Adw.ApplicationWindow):
             "Formats are grouped by manufacturer from the installed Greaseweazle.",
         )
         selected: list[str | None] = [None]
-        dialog.set_extra_child(
+        options = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        options.append(
             self._build_format_selector(
                 dialog,
                 selected,
@@ -1917,6 +1997,10 @@ class MainWindow(Adw.ApplicationWindow):
                 include_atari_auto=True,
             )
         )
+        hfe_output = Gtk.CheckButton(label="Capture as HxC HFE container (.hfe)")
+        hfe_output.set_visible(save_image)
+        options.append(hfe_output)
+        dialog.set_extra_child(options)
         dialog.add_response("cancel", "Cancel")
         continue_label = "Choose image location" if save_image else "Read disk"
         dialog.add_response("continue", continue_label)
@@ -1924,7 +2008,9 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.set_response_appearance("continue", Adw.ResponseAppearance.SUGGESTED)
         dialog.set_default_response("continue")
         dialog.set_close_response("cancel")
-        dialog.connect("response", self._on_format_response, selected, save_image)
+        dialog.connect(
+            "response", self._on_format_response, selected, save_image, hfe_output
+        )
         dialog.present()
 
     def _build_format_selector(
@@ -1947,6 +2033,8 @@ class MainWindow(Adw.ApplicationWindow):
         )
         if initial_format is None:
             initial_label = "Choose manufacturer and format…"
+        elif initial_format.direct_write and not initial_format.raw_flux:
+            initial_label = "HxC — HFE container (direct track write)"
         elif not initial_format.gw_format:
             initial_label = "Raw formats — raw flux (no conversion)"
         else:
@@ -2066,6 +2154,7 @@ class MainWindow(Adw.ApplicationWindow):
         response: str,
         selected_format: list[str | None],
         save_image: bool,
+        hfe_output: Gtk.CheckButton,
     ) -> None:
         if response != "continue":
             return
@@ -2112,9 +2201,14 @@ class MainWindow(Adw.ApplicationWindow):
             destination = Path(temporary.name) / f"disk{disk_format.suffix}"
             self._start_read(disk_format, destination, temporary)
             return
-        self._choose_image_location(disk_format)
+        self._choose_image_location(
+            disk_format, ".hfe" if hfe_output.get_active() else disk_format.suffix
+        )
 
-    def _choose_image_location(self, disk_format: DiskFormat) -> None:
+    def _choose_image_location(
+        self, disk_format: DiskFormat, output_suffix: str | None = None
+    ) -> None:
+        output_suffix = output_suffix or disk_format.suffix
         chooser = Gtk.FileChooserNative.new(
             "Save disk image",
             self,
@@ -2122,12 +2216,14 @@ class MainWindow(Adw.ApplicationWindow):
             "Read disk",
             "Cancel",
         )
-        chooser.set_current_name(f"disk{disk_format.suffix}")
+        chooser.set_current_name(f"disk{output_suffix}")
         image_filter = Gtk.FileFilter()
-        image_filter.set_name(f"{disk_format.label} image (*{disk_format.suffix})")
-        image_filter.add_pattern(f"*{disk_format.suffix}")
+        image_filter.set_name(f"Disk image (*{output_suffix})")
+        image_filter.add_pattern(f"*{output_suffix}")
         chooser.add_filter(image_filter)
-        chooser.connect("response", self._on_image_location_response, disk_format)
+        chooser.connect(
+            "response", self._on_image_location_response, disk_format, output_suffix
+        )
         self._file_chooser = chooser
         chooser.show()
 
@@ -2136,6 +2232,7 @@ class MainWindow(Adw.ApplicationWindow):
         chooser: Gtk.FileChooserNative,
         response: int,
         disk_format: DiskFormat,
+        output_suffix: str,
     ) -> None:
         self._file_chooser = None
         if response != Gtk.ResponseType.ACCEPT:
@@ -2149,8 +2246,8 @@ class MainWindow(Adw.ApplicationWindow):
             )
             return
         destination = Path(path)
-        if destination.suffix.lower() != disk_format.suffix:
-            destination = destination.with_suffix(disk_format.suffix)
+        if destination.suffix.lower() != output_suffix:
+            destination = destination.with_suffix(output_suffix)
         self._start_read(disk_format, destination)
 
     def _start_read(

@@ -1,6 +1,6 @@
 # Current implementation status
 
-This document describes the functionality in version 0.1.0.
+This document describes the functionality in version 0.2.0.
 
 ## Complete workflows
 
@@ -19,6 +19,8 @@ This document describes the functionality in version 0.1.0.
 - Read-only dual-pane browser with multiple selection, drag and drop, clipboard,
   conflict handling, local file operations, and GNOME Files integration
 - Image inspection, conversion, comparison, SHA-256, and local cataloguing
+- HxC HFE v1/v3 inspection, direct writing, capture, conversion, and blank-image
+  output using the bundled Greaseweazle codecs
 - Track health maps and selective retry for fixed-sector ADF and ST images
 - RPM, USB bandwidth, and confirmed cleaning-disk operations
 - Session diagnostics and optional JSON capture reports

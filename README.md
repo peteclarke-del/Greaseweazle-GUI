@@ -49,6 +49,8 @@ The current application:
   integrity, size, and SHA-256;
 - atomically converts images while preserving the source and warning before a
   potentially lossy raw-flux conversion;
+- recognises HxC HFE v1 and v3 images by header, writes their encoded tracks
+  directly, and creates or converts captures and blank media as `.hfe`;
 - compares captures by hash and changed track side, and optionally writes a
   JSON capture report with device/profile/provenance information;
 - catalogues a local image folder and identifies duplicate captures;
@@ -120,6 +122,12 @@ device details, and per-track results.
 Raw SCP and A2R captures are offered as **raw flux (no conversion)** so unusual
 tracks and copy protection are retained when written back.
 
+HxC HFE v1 and v3 images are identified from their container header and written
+as encoded tracks without forcing a sector format. HFE is also available as an
+output container when extracting, converting, or creating an image. These
+features use the bundled Greaseweazle HFE codec; the separate HxCFE application
+is not required or bundled.
+
 ## Creating a blank image
 
 1. Select **Create blank image** and choose a format from the complete,
@@ -136,6 +144,11 @@ tracks and copy protection are retained when written back.
 detected geometry, filesystem/volume, integrity, and SHA-256. It can compare a
 second capture or, when the `gw` host tools are installed, convert to any
 creatable supported format. Source images are never modified.
+
+For HxC floppy emulators, enable the HFE output option after choosing the target
+machine format. HFE conversion needs both pieces of information: the disk
+format defines the track encoding and geometry, while `.hfe` selects the HxC
+container.
 
 **Image library** scans a chosen local folder read-only and groups duplicate
 images by SHA-256. Nothing is uploaded or stored outside that folder.

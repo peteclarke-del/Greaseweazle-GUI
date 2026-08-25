@@ -75,6 +75,38 @@ class CreateImageTests(unittest.TestCase):
             self.assertEqual(destination.read_bytes(), b"keep me")
             self.assertIn("Conversion failed", result.diagnostic)
 
+    @patch(
+        "greaseweazle_gui.create_image.initialise_filesystem",
+        return_value="Atari TOS FAT12",
+    )
+    @patch("greaseweazle_gui.create_image.subprocess.Popen")
+    @patch("greaseweazle_gui.create_image.shutil.which", return_value="/usr/bin/gw")
+    def test_initialises_native_image_before_encoding_hfe(
+        self, _which: object, popen: Mock, initialise: Mock
+    ) -> None:
+        def start(command: list[str], **_kwargs: object) -> Mock:
+            Path(command[-1]).write_bytes(b"image")
+            return fake_process(["T79.1: IBM MFM (9/9 sectors)\n"])
+
+        popen.side_effect = start
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "blank.hfe"
+
+            result = create_blank_image(
+                destination,
+                DISK_FORMATS[2],
+                initialise=True,
+                volume_label="HXC",
+            )
+
+            self.assertTrue(result.succeeded)
+            self.assertEqual(destination.read_bytes(), b"image")
+        self.assertEqual(popen.call_count, 2)
+        first, second = (call.args[0] for call in popen.call_args_list)
+        self.assertEqual(Path(first[-1]).suffix, ".st")
+        self.assertEqual(Path(second[-1]).suffix, ".hfe")
+        initialise.assert_called_once()
+
 
 class CreateProgressTests(unittest.TestCase):
     def test_final_track_reaches_complete(self) -> None:
