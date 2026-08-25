@@ -49,11 +49,12 @@ Complete when a capture is reproducible and its provenance can be audited later.
 ## 4. Filesystem coverage
 
 - [Complete] Move filesystem readers behind a small bounded plugin interface.
-- [In progress] Read-only browsing covers Atari TOS and compatible FAT12 IMG or
-  IMA images, AmigaDOS OFS/FFS, Acorn DFS SSD/DSD, and Commodore 1541 D64.
-  HFE, SCP, and A2R containers are decoded automatically when they contain one
-  of these filesystems. Apple DOS, ADFS, ProDOS, CP/M, and further filesystems
-  remain planned where the image format provides sufficient sector data.
+- [In progress] Read-only browsing covers Atari TOS and compatible PC FAT12,
+  AmigaDOS OFS/FFS, Acorn DFS and ADFS S/M/L, Commodore 1541 DOS, Tandy Color
+  Disk BASIC, and Tandy/Dragon OS-9 RBF. HFE, SCP, and A2R containers are
+  decoded automatically when they contain one of these filesystems. Apple DOS,
+  ProDOS, CP/M, DragonDOS, and further filesystems remain planned where the
+  image format provides sufficient sector data.
 - Add fixtures for damaged directories, cyclic allocation chains, unusual names,
   and files spanning non-contiguous blocks.
 - Keep unsupported and copy-protected media browse-safe by offering the raw image

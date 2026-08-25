@@ -12,13 +12,24 @@
   <description>
     <p>
       A native GNOME interface for reading, writing, creating, and browsing
-      floppy disk images, with offline browsing for AmigaDOS, FAT12, Acorn DFS,
-      and Commodore 1541 filesystems, automatic browsing of HFE and raw-flux
-      containers, preservation reports, image inspection and conversion, HxC
-      HFE track-image support, and Greaseweazle drive tools.
+      floppy disk images, with offline browsing for AmigaDOS, FAT12, Acorn
+      DFS/ADFS, Commodore 1541, Color Disk BASIC, and OS-9 filesystems,
+      automatic browsing of HFE and raw-flux containers, preservation reports,
+      image inspection and conversion, HxC HFE track-image support, and
+      Greaseweazle drive tools.
     </p>
   </description>
   <releases>
+    <release version="0.2.2" date="2026-08-25">
+      <description>
+        <ul>
+          <li>Browse Acorn ADFS S, M, and L images, including HFE containers.</li>
+          <li>Add Tandy Color Disk BASIC and Tandy/Dragon OS-9 filesystem readers.</li>
+          <li>Add an About dialog with version, licensing, support, and project information.</li>
+          <li>Reject weak track-format probe matches before attempting a full decode.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.1" date="2026-08-25">
       <description>
         <ul>
