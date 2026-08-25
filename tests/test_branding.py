@@ -12,6 +12,13 @@ class BrandingTests(unittest.TestCase):
         pyproject = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn(f'version = "{__version__}"', pyproject)
 
+    def test_about_dialog_uses_runtime_version_and_project_links(self) -> None:
+        window = (PROJECT_ROOT / "src/greaseweazle_gui/window.py").read_text()
+
+        self.assertIn("version=__version__", window)
+        self.assertIn("license_type=Gtk.License.GPL_3_0", window)
+        self.assertIn("peteclarke-del/Greaseweazle-GUI", window)
+
     def test_product_identity_is_exact(self) -> None:
         self.assertEqual(APPLICATION_NAME, "Greaseweazle-GUI")
         self.assertEqual(APPLICATION_SUBTITLE, "for linux")

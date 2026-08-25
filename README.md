@@ -16,9 +16,9 @@ The current application:
 - checks for the `gw` command and a connected Greaseweazle at startup;
 - continues in offline image mode when no device is available, while clearly
   disabling physical operations;
-- opens and browses existing AmigaDOS, FAT12, Acorn DFS, and Commodore 1541
-  images, automatically decoding HFE, SCP, and A2R containers without attached
-  hardware;
+- opens and browses existing AmigaDOS, FAT12, Acorn DFS/ADFS, Commodore 1541,
+  Tandy Color Disk BASIC, and Tandy/Dragon OS-9 images, automatically decoding
+  HFE, SCP, and A2R containers without attached hardware;
 - probes cylinder zero and automatically identifies standard disk formats;
 - reads browseable filesystems through a temporary sector image;
 - optionally extracts a permanent sector image using the suffix appropriate to
@@ -26,8 +26,9 @@ The current application:
 - preserves unrecognised or special-format disks as lossless `.scp` captures;
 - treats a recognised geometry with an invalid filesystem as potentially
   protected, then captures cylinders 0–82 on both heads as lossless SCP;
-- browses Amiga OFS/FFS, Atari TOS and compatible FAT12, Acorn DFS, and
-  Commodore 1541 DOS directories through bounded read-only filesystem plugins;
+- browses Amiga OFS/FFS, Atari TOS and compatible PC FAT12, Acorn DFS/ADFS,
+  Commodore 1541 DOS, Color Disk BASIC, and OS-9 RBF directories through
+  bounded read-only filesystem plugins;
 - copies files and folders to GNOME Files using drag-and-drop or Copy/Paste;
 - provides a toggleable Directory Opus-style dual-pane browser with the disk on
   the left and the local filesystem on the right;
@@ -97,11 +98,14 @@ The format menu and filesystem browser solve different parts of the job.
 Greaseweazle decodes the physical track format. Greaseweazle-GUI then needs a
 filesystem reader to show normal files and folders. Current readers support
 Atari TOS FAT12 (`.st`), compatible FAT12 sector images (`.img` and `.ima`),
-AmigaDOS OFS/FFS (`.adf`), Acorn DFS (`.ssd` and `.dsd`), and Commodore 1541
-DOS (`.d64`). Suitable PC, MS-DOS, and other FAT12 disks are therefore not
-limited to the Atari path. Other listed formats can still be captured,
-inspected, converted, and written, but the application will report that their
-filesystem is unsupported instead of showing an empty directory.
+AmigaDOS OFS/FFS (`.adf`), Acorn DFS (`.ssd` and `.dsd`), Acorn ADFS S/M/L
+(`.adm`, `.ads`, and `.adl`), Commodore 1541 DOS (`.d64`), Tandy Color Disk
+BASIC, and OS-9 RBF (`.img`). Suitable PC, MS-DOS, and other FAT12 disks are
+therefore not limited to the Atari path. Shared `.img` files are identified by
+their filesystem structures rather than their filename. Other listed formats
+can still be captured, inspected, converted, and written, but the application
+will report that their filesystem is unsupported instead of showing an empty
+directory.
 
 See [Format and filesystem support](docs/FORMAT_SUPPORT.md) for the exact
 boundary between Greaseweazle media support and in-app directory browsing.
@@ -191,12 +195,12 @@ Greaseweazle Host Tools 1.23, and the official Linux device-access rules. GTK,
 libadwaita, and Python are installed or updated through the distribution package
 manager.
 
-1. Download `Greaseweazle-GUI_0.2.1_ubuntu24.04_amd64.deb` and `SHA256SUMS`
+1. Download `Greaseweazle-GUI_0.2.2_ubuntu24.04_amd64.deb` and `SHA256SUMS`
    from the matching GitHub Release.
 2. From the download folder, run
    `sha256sum --check --ignore-missing SHA256SUMS`.
 3. Install with
-   `sudo apt install ./Greaseweazle-GUI_0.2.1_ubuntu24.04_amd64.deb`.
+   `sudo apt install ./Greaseweazle-GUI_0.2.2_ubuntu24.04_amd64.deb`.
 4. Unplug and reconnect the Greaseweazle so the new device rule takes effect.
 5. Open **Greaseweazle-GUI** from the GNOME application grid, or run
    `greaseweazle-gui` from a terminal.
@@ -204,13 +208,13 @@ manager.
 Remove it with `sudo apt remove greaseweazlegui`. User disk images, capture
 reports, and application data are not removed.
 
-The `greaseweazle_gui-0.2.1-py3-none-any.whl` wheel is also attached for
+The `greaseweazle_gui-0.2.2-py3-none-any.whl` wheel is also attached for
 developers. It does not install GTK, libadwaita, the Greaseweazle host tools,
 desktop metadata, or device rules, so normal desktop users should install the
 `.deb` package.
 
 Maintainers create a release by updating the version in `pyproject.toml`,
-merging the release commit, and pushing a matching tag such as `v0.2.1`. The
+merging the release commit, and pushing a matching tag such as `v0.2.2`. The
 release workflow tests the exact tag, builds and installs the package on Ubuntu
 24.04, generates SHA-256 checksums, and publishes all files to GitHub Releases.
 
@@ -233,9 +237,9 @@ GREASEWEAZLE_GUI_DEMO=1 ./greaseweazle-gui
 The simulation is never enabled by default.
 
 When no hardware or host tools are available, choose **Use images offline**.
-Existing AmigaDOS, FAT12, Acorn DFS, and Commodore 1541 images can still be
-opened and browsed. Physical read, extract, and write controls remain disabled
-until device detection succeeds.
+Existing AmigaDOS, FAT12, Acorn DFS/ADFS, Commodore 1541, Color Disk BASIC,
+and OS-9 images can still be opened and browsed. Physical read, extract, and
+write controls remain disabled until device detection succeeds.
 
 Additional technical documentation:
 

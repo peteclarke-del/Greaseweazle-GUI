@@ -1,6 +1,6 @@
 # Current implementation status
 
-This document describes the functionality in version 0.2.1.
+This document describes the functionality in version 0.2.2.
 
 ## Complete workflows
 
@@ -33,9 +33,9 @@ This document describes the functionality in version 0.2.1.
 ## Filesystem coverage in progress
 
 Browseable filesystems are AmigaDOS OFS/FFS, FAT12 in ST/IMG/IMA images, Acorn
-DFS in SSD/DSD images, and Commodore 1541 DOS in D64 images. HFE, SCP, and A2R
-containers are automatically decoded to a temporary compatible sector image
-when they contain one of these filesystems. Greaseweazle can read many more
+DFS and ADFS S/M/L, Commodore 1541 DOS, Tandy Color Disk BASIC, and OS-9 RBF.
+HFE, SCP, and A2R containers are automatically decoded to a temporary compatible
+sector image when they contain one of these filesystems. Greaseweazle can read many more
 low-level formats than this list. Unsupported filesystems remain extractable as
 images and are never shown as empty directories.
 

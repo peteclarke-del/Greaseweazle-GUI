@@ -93,6 +93,61 @@ def make_ffs_image() -> bytes:
     return bytes(image)
 
 
+def make_adfs_image() -> bytes:
+    image = bytearray(320 * 1024)
+    image[0xFC:0xFF] = (1280).to_bytes(3, "little")
+    root = 2 * 256
+    image[root + 1 : root + 5] = b"Hugo"
+    image[root + 0x4FB : root + 0x4FF] = b"Hugo"
+    image[root + 0x4D9 : root + 0x4DD] = b"WORK"
+    entry = root + 5
+    image[entry : entry + 10] = b"HELLO\r\r\r\r\r"
+    image[entry + 18 : entry + 22] = (5).to_bytes(4, "little")
+    image[entry + 22 : entry + 25] = (8).to_bytes(3, "little")
+    image[8 * 256 : 8 * 256 + 5] = b"hello"
+    return bytes(image)
+
+
+def make_decb_image() -> bytes:
+    image = bytearray(35 * 18 * 256)
+    directory_track = 17 * 18 * 256
+    image[directory_track + 256] = 0xC1
+    entry = directory_track + 2 * 256
+    image[entry : entry + 11] = b"HELLO   TXT"
+    image[entry + 13] = 0
+    image[entry + 14 : entry + 16] = (5).to_bytes(2, "big")
+    image[entry + 32] = 0xFF
+    image[:5] = b"hello"
+    return bytes(image)
+
+
+def make_os9_image() -> bytes:
+    image = bytearray(40 * 18 * 256)
+    image[0:3] = (720).to_bytes(3, "big")
+    image[3] = 18
+    image[4:6] = (90).to_bytes(2, "big")
+    image[6:8] = (1).to_bytes(2, "big")
+    image[8:11] = (2).to_bytes(3, "big")
+    image[0x1F:0x24] = b"WORK\xc4"
+
+    root_descriptor = 2 * 256
+    image[root_descriptor] = 0x80
+    image[root_descriptor + 9 : root_descriptor + 13] = (32).to_bytes(4, "big")
+    image[root_descriptor + 0x10 : root_descriptor + 0x13] = (3).to_bytes(3, "big")
+    image[root_descriptor + 0x13 : root_descriptor + 0x15] = (1).to_bytes(2, "big")
+
+    directory = 3 * 256
+    image[directory : directory + 5] = b"HELL\xcf"
+    image[directory + 29 : directory + 32] = (4).to_bytes(3, "big")
+
+    file_descriptor = 4 * 256
+    image[file_descriptor + 9 : file_descriptor + 13] = (5).to_bytes(4, "big")
+    image[file_descriptor + 0x10 : file_descriptor + 0x13] = (5).to_bytes(3, "big")
+    image[file_descriptor + 0x13 : file_descriptor + 0x15] = (1).to_bytes(2, "big")
+    image[5 * 256 : 5 * 256 + 5] = b"hello"
+    return bytes(image)
+
+
 class FilesystemTests(unittest.TestCase):
     def test_opening_image_reads_directory_without_extracting_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -117,6 +172,40 @@ class FilesystemTests(unittest.TestCase):
 
             self.assertEqual(contents.format_label, "FAT12")
             self.assertEqual(contents.volume_label, "TEST DISK")
+            self.assertEqual(contents.entries[0].read_bytes(), b"hello")
+
+    def test_opens_acorn_adfs_old_map_image(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "work.ads"
+            image.write_bytes(make_adfs_image())
+
+            contents = open_image(image)
+
+            self.assertEqual(contents.volume_label, "WORK")
+            self.assertEqual(contents.format_label, "Acorn ADFS")
+            self.assertEqual(contents.entries[0].read_bytes(), b"hello")
+
+    def test_opens_tandy_color_disk_basic_image(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "color-computer.img"
+            image.write_bytes(make_decb_image())
+
+            contents = open_image(image)
+
+            self.assertEqual(contents.format_label, "Tandy Color Disk BASIC")
+            self.assertEqual(contents.entries[0].name, "HELLO.TXT")
+            self.assertEqual(contents.entries[0].read_bytes(), b"hello")
+
+    def test_opens_tandy_and_dragon_os9_image(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "os9.img"
+            image.write_bytes(make_os9_image())
+
+            contents = open_image(image)
+
+            self.assertEqual(contents.volume_label, "WORKD")
+            self.assertEqual(contents.format_label, "OS-9 RBF")
+            self.assertEqual(contents.entries[0].name, "HELLO")
             self.assertEqual(contents.entries[0].read_bytes(), b"hello")
 
     def test_materializes_only_selected_entries(self) -> None:
