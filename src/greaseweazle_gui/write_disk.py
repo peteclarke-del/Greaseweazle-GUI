@@ -73,7 +73,7 @@ def write_disk(
     command = [executable, "write"]
     if drive is not None:
         command.extend(("--drive", drive))
-    if disk_format.gw_format:
+    if disk_format.gw_format and not disk_format.direct_write:
         command.extend(("--format", disk_format.gw_format))
     command.append(str(image_path))
     progress_updates: list[WriteProgress] = []

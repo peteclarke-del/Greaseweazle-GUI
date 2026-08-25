@@ -21,6 +21,33 @@ def _find_format(name: str) -> DiskFormat | None:
     return next((item for item in supported_formats() if item.gw_format == name), None)
 
 
+def _hfe_format(header: bytes, image_size: int) -> DiskFormat | None:
+    """Return container geometry for a valid HxC HFE v1 or v3 header."""
+    signature = header[:8]
+    if signature not in {b"HXCPICFE", b"HXCHFEV3"} or len(header) < 20:
+        return None
+    cylinders, heads = header[9], header[10]
+    track_list_offset = int.from_bytes(header[18:20], "little") * 512
+    if (
+        not cylinders
+        or heads not in {1, 2}
+        or track_list_offset < 512
+        or track_list_offset + cylinders * 4 > image_size
+    ):
+        return None
+    version = "v3" if signature == b"HXCHFEV3" else "v1"
+    return DiskFormat(
+        f"HxC HFE {version}",
+        "HxC floppy-emulator track image; write encoded tracks directly",
+        "",
+        ".hfe",
+        cylinders,
+        heads,
+        0,
+        direct_write=True,
+    )
+
+
 def _atari_geometry(header: bytes) -> tuple[int, int, int] | None:
     if len(header) < 64:
         return None
@@ -109,6 +136,15 @@ def detect_image_format(path: Path) -> ImageFormatGuess:
                 f"FAT boot sector: {cylinders} cylinders, {heads} heads, {sectors} sectors/track",
             )
 
+    if hfe_format := _hfe_format(header, size):
+        return ImageFormatGuess(
+            hfe_format,
+            "content",
+            f"{hfe_format.label} header: {hfe_format.cylinders} cylinders, "
+            f"{hfe_format.heads} {'head' if hfe_format.heads == 1 else 'heads'}; "
+            "encoded tracks will be written directly",
+        )
+
     if header[:3] == b"SCP":
         # SCP has 168 track offsets at 0x10. Their indices are physical track
         # numbers (cylinder * 2 + head), so the table tells us the actual range
@@ -175,6 +211,12 @@ def detect_image_format(path: Path) -> ImageFormatGuess:
             RAW_FLUX_FORMAT,
             "extension",
             f"Guessed raw flux from the {extension} filename extension",
+        )
+    if extension == ".hfe":
+        return ImageFormatGuess(
+            None,
+            "unknown",
+            "The .hfe filename does not contain a valid HxC HFE v1 or v3 header.",
         )
     if (name := _EXTENSION_DEFAULTS.get(extension)) and (
         disk_format := _find_format(name)

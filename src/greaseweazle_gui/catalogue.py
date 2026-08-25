@@ -30,6 +30,7 @@ IMAGE_SUFFIXES = frozenset(
         ".d2m",
         ".d4m",
         ".sf7",
+        ".hfe",
     }
 )
 

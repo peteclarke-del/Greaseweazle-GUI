@@ -4,7 +4,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from greaseweazle_gui.disk_formats import DISK_FORMATS, RAW_FLUX_FORMAT
+from greaseweazle_gui.disk_formats import (
+    DISK_FORMATS,
+    RAW_FLUX_FORMAT,
+    DiskFormat,
+)
 from greaseweazle_gui.write_disk import parse_write_progress, write_disk
 
 
@@ -51,6 +55,19 @@ class WriteDiskTests(unittest.TestCase):
             popen.call_args.args[0],
             ["/usr/bin/gw", "write", "protected.scp"],
         )
+
+    @patch("greaseweazle_gui.write_disk.subprocess.Popen")
+    @patch("greaseweazle_gui.write_disk.shutil.which", return_value="/usr/bin/gw")
+    def test_hfe_container_is_written_directly(
+        self, _which: object, popen: Mock
+    ) -> None:
+        popen.return_value = fake_process(["T0.0: Written\n"])
+        hfe = DiskFormat("HxC HFE v1", "", "", ".hfe", 80, 2, 0, True)
+
+        result = write_disk(Path("disk.hfe"), hfe)
+
+        self.assertTrue(result.succeeded)
+        self.assertEqual(popen.call_args.args[0], ["/usr/bin/gw", "write", "disk.hfe"])
 
     @patch("greaseweazle_gui.write_disk.subprocess.Popen")
     @patch("greaseweazle_gui.write_disk.shutil.which", return_value="/usr/bin/gw")

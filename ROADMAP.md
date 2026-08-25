@@ -27,6 +27,8 @@ track sides.
   integrity, file size, and SHA-256.
 - [Complete] Convert between compatible image formats without claiming that a lossy
   conversion preserves protection or weak-bit data.
+- [Complete] Treat HxC HFE as a first-class track-image container for inspection,
+  capture, conversion, blank-image creation, cataloguing, and direct writing.
 
 Complete when users can create, inspect, browse, and safely convert standard
 images entirely from the GUI.

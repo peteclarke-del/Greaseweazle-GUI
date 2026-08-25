@@ -14,9 +14,21 @@
       A native GNOME interface for reading, writing, creating, and browsing
       floppy disk images, with offline browsing for AmigaDOS, FAT12, Acorn DFS,
       and Commodore 1541 filesystems, preservation reports, image inspection
-      and conversion, and Greaseweazle drive tools.
+      and conversion, HxC HFE track-image support, and Greaseweazle drive tools.
     </p>
   </description>
+  <releases>
+    <release version="0.2.0" date="2026-08-25">
+      <description>
+        <ul>
+          <li>Add HxC HFE v1 and v3 inspection and direct track writing.</li>
+          <li>Add HFE output for captures, conversions, and blank images.</li>
+          <li>Preserve initialized filesystems when creating blank HFE media.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.1.0" date="2026-08-24" />
+  </releases>
   <launchable type="desktop-id">com.github.pclarke.GreaseweazleGUI.desktop</launchable>
   <content_rating type="oars-1.1" />
 </component>

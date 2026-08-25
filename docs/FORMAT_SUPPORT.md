@@ -44,6 +44,21 @@ They must first be decoded to a suitable sector format. Conversion can lose
 weak bits, deliberate checksum errors, unusual timing, and other protection
 features, so retain the raw source.
 
+## HxC HFE images
+
+HFE v1 (`HXCPICFE`) and HFE v3 (`HXCHFEV3`) containers are recognised from
+their headers. The application reports their cylinder and head geometry,
+catalogues and hashes them, and writes their encoded tracks directly without
+selecting a sector decoder. HFE can also be selected as the output container
+for disk extraction, image conversion, and blank-image creation.
+
+An HFE container stores encoded track data rather than a directly browseable
+filesystem image. Convert it to a compatible sector image before browsing its
+files. Conversion requires the correct machine format and may not preserve all
+weak-bit, timing, or multi-revolution behaviour from an SCP or A2R source. The
+HFE codec comes from the included Greaseweazle host tools; HxCFE itself is not
+bundled or required.
+
 ## Automatic identification
 
 Automatic detection currently performs a quick cylinder-zero check for the

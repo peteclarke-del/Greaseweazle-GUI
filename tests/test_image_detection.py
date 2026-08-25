@@ -78,6 +78,55 @@ class ImageDetectionTests(unittest.TestCase):
         self.assertEqual(guess.method, "unknown")
         self.assertIsNone(guess.disk_format)
 
+    def test_hfe_v1_header_selects_direct_write_and_geometry(self) -> None:
+        header = bytearray(1024)
+        header[:8] = b"HXCPICFE"
+        header[9] = 82
+        header[10] = 2
+        header[18:20] = (1).to_bytes(2, "little")
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "disk.hfe"
+            path.write_bytes(header)
+
+            guess = detect_image_format(path)
+
+        self.assertEqual(guess.method, "content")
+        self.assertIsNotNone(guess.disk_format)
+        assert guess.disk_format is not None
+        self.assertEqual(guess.disk_format.label, "HxC HFE v1")
+        self.assertEqual(guess.disk_format.cylinders, 82)
+        self.assertEqual(guess.disk_format.heads, 2)
+        self.assertTrue(guess.disk_format.direct_write)
+        self.assertFalse(guess.disk_format.raw_flux)
+
+    def test_hfe_v3_header_is_recognised(self) -> None:
+        header = bytearray(1024)
+        header[:8] = b"HXCHFEV3"
+        header[9] = 80
+        header[10] = 1
+        header[18:20] = (1).to_bytes(2, "little")
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "disk.hfe"
+            path.write_bytes(header)
+
+            guess = detect_image_format(path)
+
+        self.assertIsNotNone(guess.disk_format)
+        assert guess.disk_format is not None
+        self.assertEqual(guess.disk_format.label, "HxC HFE v3")
+        self.assertEqual(guess.disk_format.heads, 1)
+
+    def test_invalid_hfe_is_not_accepted_from_extension_alone(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "broken.hfe"
+            path.write_bytes(b"not an HFE image")
+
+            guess = detect_image_format(path)
+
+        self.assertEqual(guess.method, "unknown")
+        self.assertIsNone(guess.disk_format)
+        self.assertIn("valid HxC HFE", guess.explanation)
+
 
 if __name__ == "__main__":
     unittest.main()

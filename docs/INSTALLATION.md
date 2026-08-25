@@ -2,13 +2,14 @@
 
 ## Supported release package
 
-The current native package targets 64-bit Ubuntu 24.04 and Linux Mint 22. It
+The v0.2.0 native package targets 64-bit Ubuntu 24.04 and Linux Mint 22. It
 contains the application, screenshots and help content, Greaseweazle Host Tools
 1.23, and the official Greaseweazle udev rules. The distribution supplies
 Python 3.12, GTK 4, libadwaita, and PyGObject.
 
 1. Open the required version under GitHub Releases.
-2. Download the `.deb` file and `SHA256SUMS` into the same folder.
+2. Download `Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb` and `SHA256SUMS`
+   into the same folder.
 3. Verify the download:
 
    ```sh
@@ -18,7 +19,7 @@ Python 3.12, GTK 4, libadwaita, and PyGObject.
 4. Install the package and its distribution dependencies:
 
    ```sh
-   sudo apt install ./Greaseweazle-GUI_VERSION_ubuntu24.04_amd64.deb
+   sudo apt install ./Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb
    ```
 
 5. Unplug and reconnect Greaseweazle. The package reloads the udev rules, but a
@@ -45,11 +46,12 @@ device rule. It does not delete disk images or capture reports in user folders.
 
 ## Source and developer installation
 
-The wheel attached to each release is for development and integration use. It
-does not configure desktop metadata, GTK dependencies, the Greaseweazle host
-tool, or hardware access. Users of other Linux distributions can currently run
-from the source tree after installing Python 3.10 or newer, GTK 4.8 or newer,
-libadwaita, PyGObject, and the upstream `gw` command.
+The `greaseweazle_gui-0.2.0-py3-none-any.whl` wheel attached to this release is
+for development and integration use. It does not configure desktop metadata,
+GTK dependencies, the Greaseweazle host tool, or hardware access. Users of
+other Linux distributions can currently run from the source tree after
+installing Python 3.10 or newer, GTK 4.8 or newer, libadwaita, PyGObject, and
+the upstream `gw` command.
 
 ```sh
 ./greaseweazle-gui
