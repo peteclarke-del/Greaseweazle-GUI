@@ -49,6 +49,25 @@ class ConversionScoreTests(unittest.TestCase):
 
 
 class DetectFormatTests(unittest.TestCase):
+    @patch("greaseweazle_gui.format_detection.subprocess.run")
+    @patch("greaseweazle_gui.format_detection.shutil.which", return_value="/usr/bin/gw")
+    def test_probe_tracks_follow_candidate_geometry(
+        self, _which: object, run: object
+    ) -> None:
+        disk_format = DISK_FORMATS[0]
+        short_format = type(disk_format)(
+            "Commodore 1541", "", "commodore.1541", ".d64", 35, 1, 21
+        )
+        run.return_value = subprocess.CompletedProcess([], 0, "", "")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            raw = root / "disk.hfe"
+            raw.write_bytes(b"container")
+
+            detect_format(raw, root, candidates=(short_format,))
+
+        self.assertIn("c=0,17,34:h=0-0", run.call_args.args[0])
+
     @patch("greaseweazle_gui.format_detection.open_image")
     @patch("greaseweazle_gui.format_detection.subprocess.run")
     @patch("greaseweazle_gui.format_detection.shutil.which", return_value="/usr/bin/gw")

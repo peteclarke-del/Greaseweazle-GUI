@@ -239,13 +239,17 @@ def detect_format(
         if progress is not None:
             progress(DetectionProgress(index, total, disk_format.label))
         output_path = work_directory / f"probe-{index}{disk_format.suffix}"
+        probe_cylinders = sorted(
+            {0, disk_format.cylinders // 2, disk_format.cylinders - 1}
+        )
+        tracks = ",".join(str(cylinder) for cylinder in probe_cylinders)
         try:
             completed = _run_conversion(
                 [
                     executable,
                     "convert",
                     "--tracks",
-                    f"c=0,40,79:h=0-{disk_format.heads - 1}",
+                    f"c={tracks}:h=0-{disk_format.heads - 1}",
                     "--format",
                     disk_format.gw_format,
                     str(raw_image),

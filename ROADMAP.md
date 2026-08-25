@@ -28,7 +28,8 @@ track sides.
 - [Complete] Convert between compatible image formats without claiming that a lossy
   conversion preserves protection or weak-bit data.
 - [Complete] Treat HxC HFE as a first-class track-image container for inspection,
-  capture, conversion, blank-image creation, cataloguing, and direct writing.
+  capture, automatic filesystem browsing, conversion, blank-image creation,
+  cataloguing, and direct writing.
 
 Complete when users can create, inspect, browse, and safely convert standard
 images entirely from the GUI.
@@ -50,8 +51,9 @@ Complete when a capture is reproducible and its provenance can be audited later.
 - [Complete] Move filesystem readers behind a small bounded plugin interface.
 - [In progress] Read-only browsing covers Atari TOS and compatible FAT12 IMG or
   IMA images, AmigaDOS OFS/FFS, Acorn DFS SSD/DSD, and Commodore 1541 D64.
-  Apple DOS, ADFS, ProDOS, CP/M, and further filesystems remain planned where
-  the image format provides sufficient sector data.
+  HFE, SCP, and A2R containers are decoded automatically when they contain one
+  of these filesystems. Apple DOS, ADFS, ProDOS, CP/M, and further filesystems
+  remain planned where the image format provides sufficient sector data.
 - Add fixtures for damaged directories, cyclic allocation chains, unusual names,
   and files spanning non-contiguous blocks.
 - Keep unsupported and copy-protected media browse-safe by offering the raw image

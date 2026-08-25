@@ -17,7 +17,8 @@ The current application:
 - continues in offline image mode when no device is available, while clearly
   disabling physical operations;
 - opens and browses existing AmigaDOS, FAT12, Acorn DFS, and Commodore 1541
-  images without attached hardware;
+  images, automatically decoding HFE, SCP, and A2R containers without attached
+  hardware;
 - probes cylinder zero and automatically identifies standard disk formats;
 - reads browseable filesystems through a temporary sector image;
 - optionally extracts a permanent sector image using the suffix appropriate to
@@ -123,11 +124,12 @@ device details, and per-track results.
 Raw SCP and A2R captures are offered as **raw flux (no conversion)** so unusual
 tracks and copy protection are retained when written back.
 
-HxC HFE v1 and v3 images are identified from their container header and written
-as encoded tracks without forcing a sector format. HFE is also available as an
-output container when extracting, converting, or creating an image. These
-features use the bundled Greaseweazle HFE codec; the separate HxCFE application
-is not required or bundled.
+HxC HFE v1 and v3 images are identified from their container header, browsed
+through an automatically decoded temporary sector image, and written as encoded
+tracks without forcing a sector format. HFE is also available as an output
+container when extracting, converting, or creating an image. These features use
+the bundled Greaseweazle HFE codec; the separate HxCFE application is not
+required or bundled.
 
 ## Creating a blank image
 
@@ -189,12 +191,12 @@ Greaseweazle Host Tools 1.23, and the official Linux device-access rules. GTK,
 libadwaita, and Python are installed or updated through the distribution package
 manager.
 
-1. Download `Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb` and `SHA256SUMS`
+1. Download `Greaseweazle-GUI_0.2.1_ubuntu24.04_amd64.deb` and `SHA256SUMS`
    from the matching GitHub Release.
 2. From the download folder, run
    `sha256sum --check --ignore-missing SHA256SUMS`.
 3. Install with
-   `sudo apt install ./Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb`.
+   `sudo apt install ./Greaseweazle-GUI_0.2.1_ubuntu24.04_amd64.deb`.
 4. Unplug and reconnect the Greaseweazle so the new device rule takes effect.
 5. Open **Greaseweazle-GUI** from the GNOME application grid, or run
    `greaseweazle-gui` from a terminal.
@@ -202,13 +204,13 @@ manager.
 Remove it with `sudo apt remove greaseweazlegui`. User disk images, capture
 reports, and application data are not removed.
 
-The `greaseweazle_gui-0.2.0-py3-none-any.whl` wheel is also attached for
+The `greaseweazle_gui-0.2.1-py3-none-any.whl` wheel is also attached for
 developers. It does not install GTK, libadwaita, the Greaseweazle host tools,
 desktop metadata, or device rules, so normal desktop users should install the
 `.deb` package.
 
 Maintainers create a release by updating the version in `pyproject.toml`,
-merging the release commit, and pushing a matching tag such as `v0.2.0`. The
+merging the release commit, and pushing a matching tag such as `v0.2.1`. The
 release workflow tests the exact tag, builds and installs the package on Ubuntu
 24.04, generates SHA-256 checksums, and publishes all files to GitHub Releases.
 

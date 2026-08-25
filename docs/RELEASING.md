@@ -34,11 +34,11 @@ On Ubuntu 24.04 with Python 3.12:
 python3 -m pip install build
 python3 -m build --wheel --outdir dist
 ./packaging/build-deb.sh dist
-dpkg-deb --info dist/Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb
-dpkg-deb --contents dist/Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb
+dpkg-deb --info dist/Greaseweazle-GUI_0.2.1_ubuntu24.04_amd64.deb
+dpkg-deb --contents dist/Greaseweazle-GUI_0.2.1_ubuntu24.04_amd64.deb
 cd dist
-sha256sum Greaseweazle-GUI_0.2.0_ubuntu24.04_amd64.deb \
-  greaseweazle_gui-0.2.0-py3-none-any.whl > SHA256SUMS
+sha256sum Greaseweazle-GUI_0.2.1_ubuntu24.04_amd64.deb \
+  greaseweazle_gui-0.2.1-py3-none-any.whl > SHA256SUMS
 ```
 
 The build downloads the tagged Greaseweazle source archive, rejects it unless
@@ -52,8 +52,8 @@ Merge the reviewed release pull request, then create and push a tag that exactly
 matches the project version:
 
 ```sh
-git tag -s v0.2.0 -m "Greaseweazle-GUI v0.2.0"
-git push origin v0.2.0
+git tag -s v0.2.1 -m "Greaseweazle-GUI v0.2.1"
+git push origin v0.2.1
 ```
 
 The release workflow verifies the version, runs the tests, builds the wheel and

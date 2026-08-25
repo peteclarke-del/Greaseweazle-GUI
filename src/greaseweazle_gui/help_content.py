@@ -230,7 +230,7 @@ HELP_TOPICS = (
                 "Conversion",
                 (
                     "Convert creates a new file through the installed Greaseweazle codecs. The source is not modified, and the destination is replaced atomically only after a successful conversion. Choose a format that is compatible with the information present in the source.",
-                    "Enable HxC HFE output to create an emulator-ready .hfe container after selecting its machine format and geometry. HFE images can also be inspected, catalogued, converted back to sector images, and written directly. The separate HxCFE program is not required.",
+                    "Enable HxC HFE output to create an emulator-ready .hfe container after selecting its machine format and geometry. Open image automatically decodes HFE, SCP, and A2R containers to a temporary sector image when their filesystem is supported. HFE images can also be inspected, catalogued, converted, and written directly. The separate HxCFE program is not required.",
                     "A sector image cannot represent arbitrary flux timing, weak bits, or some protection schemes. Keep the original SCP or A2R whenever converting raw media.",
                 ),
             ),

@@ -1,6 +1,6 @@
 # Current implementation status
 
-This document describes the functionality in version 0.2.0.
+This document describes the functionality in version 0.2.1.
 
 ## Complete workflows
 
@@ -20,8 +20,9 @@ This document describes the functionality in version 0.2.0.
 - Read-only dual-pane browser with multiple selection, drag and drop, clipboard,
   conflict handling, local file operations, and GNOME Files integration
 - Image inspection, conversion, comparison, SHA-256, and local cataloguing
-- HxC HFE v1/v3 inspection, direct writing, capture, conversion, and blank-image
-  output using the bundled Greaseweazle codecs
+- HxC HFE v1/v3 inspection, automatic filesystem browsing, direct writing,
+  capture, conversion, and blank-image output using the bundled Greaseweazle
+  codecs
 - Track health maps and selective retry for fixed-sector ADF and ST images
 - RPM, USB bandwidth, and confirmed cleaning-disk operations
 - Session diagnostics and optional JSON capture reports
@@ -32,9 +33,11 @@ This document describes the functionality in version 0.2.0.
 ## Filesystem coverage in progress
 
 Browseable filesystems are AmigaDOS OFS/FFS, FAT12 in ST/IMG/IMA images, Acorn
-DFS in SSD/DSD images, and Commodore 1541 DOS in D64 images. Greaseweazle can
-read many more low-level formats than this list. Unsupported filesystems remain
-extractable as images and are never shown as empty directories.
+DFS in SSD/DSD images, and Commodore 1541 DOS in D64 images. HFE, SCP, and A2R
+containers are automatically decoded to a temporary compatible sector image
+when they contain one of these filesystems. Greaseweazle can read many more
+low-level formats than this list. Unsupported filesystems remain extractable as
+images and are never shown as empty directories.
 
 See [Format and filesystem support](FORMAT_SUPPORT.md) for details.
 

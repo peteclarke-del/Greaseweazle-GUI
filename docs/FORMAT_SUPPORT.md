@@ -17,10 +17,10 @@ filesystem, or that Greaseweazle-GUI understands that filesystem.
 
 | Filesystem | Image suffixes | Current behaviour |
 | --- | --- | --- |
-| AmigaDOS OFS and FFS | `.adf` | Directories and files are read lazily. DD and HD images are accepted. |
-| FAT12 | `.st`, `.img`, `.ima` | Atari TOS, PC, MS-DOS, and other compatible FAT12 sector images can be browsed. Long names and nested directories are bounded. |
-| Acorn DFS | `.ssd`, `.dsd` | Single-sided and interleaved double-sided catalogues can be browsed. |
-| Commodore 1541 DOS | `.d64` | Standard 35-track images, with or without error bytes, can be browsed. |
+| AmigaDOS OFS and FFS | `.adf`, `.hfe`, `.scp`, `.a2r` | Directories and files are read lazily. DD and HD images are accepted. Track containers are decoded to a temporary ADF. |
+| FAT12 | `.st`, `.img`, `.ima`, `.hfe`, `.scp`, `.a2r` | Atari TOS, PC, MS-DOS, and other compatible FAT12 images can be browsed. Long names and nested directories are bounded. Track containers are decoded to a temporary sector image. |
+| Acorn DFS | `.ssd`, `.dsd`, `.hfe`, `.scp`, `.a2r` | Single-sided and interleaved double-sided catalogues can be browsed, including from decoded track containers. |
+| Commodore 1541 DOS | `.d64`, `.hfe`, `.scp`, `.a2r` | Standard 35-track images, with or without error bytes, can be browsed, including from decoded track containers. |
 
 These readers reject allocation loops, recursive directory chains, invalid
 sector pointers, overlapping files, impossible sizes, and truncated images.
@@ -40,9 +40,11 @@ or unrecognised media should be retained as SCP with the Protected Software
 capture profile.
 
 Raw flux formats such as SCP and A2R do not contain a normal directory image.
-They must first be decoded to a suitable sector format. Conversion can lose
-weak bits, deliberate checksum errors, unusual timing, and other protection
-features, so retain the raw source.
+When browsing, the application automatically identifies a compatible installed
+filesystem reader and decodes a temporary sector image. The source is never
+modified. Decoding cannot expose a directory for unsupported filesystems and
+can lose weak bits, deliberate checksum errors, unusual timing, and other
+protection features, so retain the raw source.
 
 ## HxC HFE images
 
@@ -52,12 +54,11 @@ catalogues and hashes them, and writes their encoded tracks directly without
 selecting a sector decoder. HFE can also be selected as the output container
 for disk extraction, image conversion, and blank-image creation.
 
-An HFE container stores encoded track data rather than a directly browseable
-filesystem image. Convert it to a compatible sector image before browsing its
-files. Conversion requires the correct machine format and may not preserve all
-weak-bit, timing, or multi-revolution behaviour from an SCP or A2R source. The
-HFE codec comes from the included Greaseweazle host tools; HxCFE itself is not
-bundled or required.
+An HFE container stores encoded track data rather than a sector image. **Open
+image** automatically tests compatible Greaseweazle formats and opens a decoded
+temporary image whenever the filesystem is one of those supported above. The
+HFE source remains unchanged. The HFE codec comes from the included
+Greaseweazle host tools; HxCFE itself is not bundled or required.
 
 ## Automatic identification
 

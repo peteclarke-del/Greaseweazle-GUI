@@ -31,6 +31,7 @@ def convert_image(
     progress: Callable[[CreateImageProgress], None] | None = None,
     controller: OperationController | None = None,
     timeout: float = 600,
+    tracks: str | None = None,
 ) -> ConvertImageResult:
     executable = shutil.which("gw")
     if executable is None:
@@ -47,14 +48,17 @@ def convert_image(
         prefix=".greaseweazle-convert-", dir=destination.parent
     ) as temporary:
         output = Path(temporary) / f"converted{destination.suffix}"
-        command = [
-            executable,
-            "convert",
-            "--format",
-            target_format.gw_format,
-            str(source),
-            str(output),
-        ]
+        command = [executable, "convert"]
+        if tracks is not None:
+            command.extend(("--tracks", tracks))
+        command.extend(
+            (
+                "--format",
+                target_format.gw_format,
+                str(source),
+                str(output),
+            )
+        )
 
         def process_line(line: str) -> None:
             update = parse_create_progress(line, target_format)
@@ -90,4 +94,4 @@ def convert_image(
             return ConvertImageResult(
                 False, "The converted image could not be saved.", str(error)
             )
-    return ConvertImageResult(True, "Image converted successfully.")
+    return ConvertImageResult(True, "Image converted successfully.", diagnostic)
