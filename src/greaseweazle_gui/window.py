@@ -16,6 +16,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from .branding import APPLICATION_NAME, APPLICATION_SUBTITLE
+from .browse_image import browsable_image_suffixes, open_browsable_image
 from .browser import DiskBrowser
 from .capture_compare import CaptureComparison, compare_captures
 from .capture_metadata import write_capture_report
@@ -901,13 +902,9 @@ class MainWindow(Adw.ApplicationWindow):
         )
         image_filter = Gtk.FileFilter()
         image_filter.set_name("Browseable disk images")
-        image_filter.add_pattern("*.adf")
-        image_filter.add_pattern("*.st")
-        image_filter.add_pattern("*.ssd")
-        image_filter.add_pattern("*.dsd")
-        image_filter.add_pattern("*.d64")
-        image_filter.add_pattern("*.img")
-        image_filter.add_pattern("*.ima")
+        for suffix in sorted(browsable_image_suffixes()):
+            image_filter.add_pattern(f"*{suffix}")
+            image_filter.add_pattern(f"*{suffix.upper()}")
         chooser.add_filter(image_filter)
         all_files = Gtk.FileFilter()
         all_files.set_name("All files")
@@ -947,7 +944,7 @@ class MainWindow(Adw.ApplicationWindow):
         def worker() -> None:
             guess = detect_image_format(image_path)
             try:
-                contents = open_image(image_path)
+                opened = open_browsable_image(image_path, Path(temporary.name))
             except (FilesystemError, OSError) as error:
                 GLib.idle_add(
                     self._finish_existing_image_error,
@@ -957,22 +954,16 @@ class MainWindow(Adw.ApplicationWindow):
                     guess.explanation,
                 )
                 return
-            if guess.disk_format is not None:
-                contents = DiskContents(
-                    contents.volume_label,
-                    contents.entries,
-                    guess.disk_format.label,
-                )
             result = ReadResult(True, "Image opened successfully.")
-            disk_format = guess.disk_format or DISK_FORMATS[0]
+            disk_format = opened.disk_format or guess.disk_format or DISK_FORMATS[0]
             GLib.idle_add(
                 self._finish_read,
                 result,
                 temporary,
                 (
-                    contents,
+                    opened.contents,
                     Path(temporary.name) / "files",
-                    image_path,
+                    opened.image_path,
                     disk_format,
                     (),
                 ),

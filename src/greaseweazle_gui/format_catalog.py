@@ -59,14 +59,17 @@ import json, sys
 from greaseweazle.codec.codec import get_diskdef
 result = {}
 for name in sys.argv[1:]:
-    disk = get_diskdef(name)
-    if disk is None:
+    try:
+        disk = get_diskdef(name)
+        if disk is None:
+            continue
+        sectors = [
+            getattr(disk.mk_track(cylinder, head), 'nsec', 0) or 0
+            for cylinder, head in disk.track_map
+        ]
+        result[name] = [disk.cyls, disk.heads, max(sectors, default=0)]
+    except Exception:
         continue
-    sectors = [
-        getattr(disk.mk_track(cylinder, head), 'nsec', 0) or 0
-        for cylinder, head in disk.track_map
-    ]
-    result[name] = [disk.cyls, disk.heads, max(sectors, default=0)]
 print(json.dumps(result))
 """
 
