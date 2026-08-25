@@ -1,12 +1,17 @@
 import unittest
 from pathlib import Path
 
+from greaseweazle_gui import __version__
 from greaseweazle_gui.branding import APPLICATION_NAME, APPLICATION_SUBTITLE
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class BrandingTests(unittest.TestCase):
+    def test_runtime_version_matches_project_metadata(self) -> None:
+        pyproject = (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn(f'version = "{__version__}"', pyproject)
+
     def test_product_identity_is_exact(self) -> None:
         self.assertEqual(APPLICATION_NAME, "Greaseweazle-GUI")
         self.assertEqual(APPLICATION_SUBTITLE, "for linux")

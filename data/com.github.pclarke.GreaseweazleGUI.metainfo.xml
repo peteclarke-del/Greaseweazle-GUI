@@ -14,7 +14,7 @@
       A native GNOME interface for reading, writing, creating, and browsing
       floppy disk images, with offline browsing for AmigaDOS, FAT12, Acorn DFS,
       and Commodore 1541 filesystems, preservation reports, image inspection
-      and conversion, and Greaseweazle drive tools.
+      and conversion, HxC HFE track-image support, and Greaseweazle drive tools.
     </p>
   </description>
   <releases>

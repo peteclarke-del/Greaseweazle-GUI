@@ -10,7 +10,8 @@ This document describes the functionality in version 0.2.0.
 - Offline image work when physical hardware is unavailable
 - Drive A or B selection and reconnection monitoring
 - Read and Browse with format choice or standard Amiga and Atari detection
-- Extract Disk to Image with native sector suffixes or preservation-grade SCP
+- Extract Disk to Image with native sector, HxC HFE, or preservation-grade SCP
+  containers
 - Live track, cylinder, head, sector, retry, and verification progress
 - Safe cancellation and subprocess cleanup
 - Write Image to Disk with content inspection and explicit format confirmation
@@ -25,7 +26,8 @@ This document describes the functionality in version 0.2.0.
 - RPM, USB bandwidth, and confirmed cleaning-disk operations
 - Session diagnostics and optional JSON capture reports
 - Illustrated in-app user and technical guide
-- Native Ubuntu 24.04 and Linux Mint 22 release package
+- Native Ubuntu 24.04 and Linux Mint 22 amd64 release package, plus a universal
+  Python wheel for developers
 
 ## Filesystem coverage in progress
 

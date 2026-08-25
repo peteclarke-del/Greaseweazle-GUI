@@ -113,7 +113,7 @@ HELP_TOPICS = (
             HelpSection(
                 "Image choice",
                 (
-                    "Disk, Extract Disk to Image saves the complete disk rather than opening the temporary browser image. Standard Amiga disks use ADF, Atari ST disks use ST, Acorn DFS uses SSD or DSD, Commodore 1541 uses D64, and unusual media can be retained as SCP.",
+                    "Disk, Extract Disk to Image saves the complete disk rather than opening the temporary browser image. Standard Amiga disks use ADF, Atari ST disks use ST, Acorn DFS uses SSD or DSD, and Commodore 1541 uses D64. Recognised formats can instead be saved as HxC HFE, while unusual media is retained as SCP.",
                     "If automatic detection already captured SCP, later format analysis uses that capture. The physical disk is not read again simply to create a derived sector image.",
                 ),
                 (
@@ -206,6 +206,7 @@ HELP_TOPICS = (
                 (
                     "Choose the exact machine and geometry.",
                     "Review whether filesystem creation is supported.",
+                    "Enable Create as HxC HFE container when preparing media for an HxC-compatible floppy emulator.",
                     "Choose the destination filename. The correct suffix is supplied.",
                     "Wait for Image Created. The destination is atomically replaced only after successful creation.",
                 ),
