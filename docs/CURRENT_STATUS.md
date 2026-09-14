@@ -1,6 +1,6 @@
 # Current implementation status
 
-This document describes the functionality in version 0.2.2.
+This document describes the functionality in version 0.3.0.
 
 ## Complete workflows
 
@@ -29,6 +29,11 @@ This document describes the functionality in version 0.2.2.
 - Illustrated in-app user and technical guide
 - Native Ubuntu 24.04 and Linux Mint 22 amd64 release package, plus a universal
   Python wheel for developers
+- Check for Application Updates in the About window, which compares the running
+  version with the latest GitHub release, downloads the package built for the
+  installed system, verifies it against the release's `SHA256SUMS`, installs it
+  with apt, and offers a restart. No update is installed while a disk operation
+  is running.
 
 ## Filesystem coverage in progress
 
