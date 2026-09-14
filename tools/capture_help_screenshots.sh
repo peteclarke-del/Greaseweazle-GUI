@@ -20,16 +20,22 @@ else
     image-library
     drive-tools
     diagnostic-log
+    app-update
   )
 fi
 
 for state in "${states[@]}"; do
   GREASEWEAZLE_GUI_DOCUMENTATION_STATE="$state" "$project_dir/greaseweazle-gui" &
   app_pid=$!
+  # The app-update state is captured from the About window it opens.
+  title="Greaseweazle-GUI"
+  if [[ "$state" == "app-update" ]]; then
+    title="About"
+  fi
   window_id=""
   for _attempt in {1..30}; do
-    window_id=$(xwininfo -root -tree 2>/dev/null | awk '
-      /"Greaseweazle-GUI"/ && /__main__\.py/ { print $1; exit }
+    window_id=$(xwininfo -root -tree 2>/dev/null | awk -v title="\"$title\"" '
+      index($0, title) && /__main__\.py/ { print $1; exit }
     ')
     if [[ -n "$window_id" ]]; then
       break

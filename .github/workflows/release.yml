@@ -40,6 +40,20 @@ jobs:
       - name: Run test suite
         run: python -m unittest discover -s tests -v
 
+      - name: Install GTK and the display server
+        run: |
+          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 \
+            xvfb dbus-daemon
+
+      - name: Run tests with the interface
+        env:
+          PYTHONPATH: src
+          GREASEWEAZLE_GUI_REQUIRE_GTK: "1"
+          GSK_RENDERER: cairo
+        run: >-
+          dbus-run-session -- xvfb-run --auto-servernum
+          /usr/bin/python3 -m unittest discover -s tests -v
+
       - name: Validate sources and metadata
         run: |
           python -m compileall -q src tests
@@ -89,6 +103,17 @@ jobs:
           test -x /usr/bin/greaseweazle-gui
           /usr/lib/greaseweazlegui/bin/gw info --help
           PYTHONPATH=/usr/lib/greaseweazlegui python3 -c "import greaseweazle_gui, greaseweazle"
+          # Check for Application Updates takes the file this package says it
+          # was built as from a newer release, so the record must name it.
+          PYTHONPATH=/usr/lib/greaseweazlegui python3 -c "
+          import sys
+          from greaseweazle_gui import __version__, app_update
+          target = app_update.installed_target()
+          name = target.package_name(__version__) if target else None
+          if name != sys.argv[1]:
+              raise SystemExit(f'The package records {name}, not {sys.argv[1]}.')
+          print(f'The package records {target.system}: {name}')
+          " "$(basename dist/*.deb)"
 
       - name: Create checksums
         run: cd dist && sha256sum *.deb *.whl > SHA256SUMS

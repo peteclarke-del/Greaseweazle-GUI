@@ -38,6 +38,7 @@ class HelpContentTests(unittest.TestCase):
                 "library",
                 "maintenance",
                 "troubleshooting",
+                "updates",
             }.issubset(slugs)
         )
 

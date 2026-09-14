@@ -57,6 +57,8 @@ The current application:
   JSON capture report with device/profile/provenance information;
 - catalogues a local image folder and identifies duplicate captures;
 - monitors device removal/reconnection and supports physical drive A/B;
+- checks for a newer release from the About window when asked, then downloads,
+  verifies and installs the package for the same system and offers a restart;
 - measures RPM and USB bandwidth and runs a confirmed cleaning-disk cycle; and
 - creates blank media images for every creatable format advertised by the
   installed Greaseweazle, with ready-to-use Atari FAT12 or AmigaDOS OFS
@@ -221,6 +223,21 @@ release workflow tests the exact tag, builds and installs the package on Ubuntu
 To build the installer locally on Ubuntu 24.04, run
 `./packaging/build-deb.sh dist`. The Greaseweazle host-tool version is pinned in
 `packaging/greaseweazle-version.txt` for reproducible release review.
+
+## Update to a newer release
+
+Choose **About Greaseweazle-GUI** from the **Help** menu and press **Check for
+Application Updates**. Greaseweazle-GUI asks GitHub for its latest release and
+compares it with the version it shows. When a newer one is published,
+**Update to** downloads the package made for your system, checks it against the
+release's `SHA256SUMS`, installs it with apt after the system asks for your
+password, and offers to restart Greaseweazle-GUI. Disk images and capture
+reports are not changed. Nothing is checked until you press the button, and no
+update is installed while a disk is being read or written. A copy run from the
+source tree or installed from the wheel is sent to the release page instead.
+
+Releases up to 0.2.2 do not have the button. Install a newer release over them
+with `sudo apt install` as above, which always works as well.
 
 ## Run from the source tree
 
