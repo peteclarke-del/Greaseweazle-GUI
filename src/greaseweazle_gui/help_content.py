@@ -303,6 +303,48 @@ HELP_TOPICS = (
         ),
     ),
     HelpTopic(
+        "updates",
+        "Updating Greaseweazle-GUI",
+        "Check for a newer version from the About window and install it.",
+        "app-update.png",
+        "The About window after Check for Application Updates found a newer version",
+        (
+            HelpSection(
+                "Checking for a newer version",
+                (
+                    "Choose Help, About Greaseweazle-GUI and press Check for Application Updates. The application asks GitHub for its latest release and compares it with the version shown above the button. It checks only when you press the button; nothing is sent when the application starts.",
+                    "The answer shows under the button: that this is the newest version, or the newer version and the one you have. When GitHub cannot be reached or its answer cannot be read, it says Could not check for a newer version, with the reason, and never that this is the newest version.",
+                ),
+            ),
+            HelpSection(
+                "Installing it",
+                (),
+                (
+                    "Press Update to, followed by the new version number. A question says which package will be installed and shows the release notes.",
+                    "Press Download and Install. The package made for your system, such as Ubuntu 24.04 on amd64, is downloaded from GitHub and checked against the SHA256SUMS file published with it. A package that does not match is deleted and nothing is installed.",
+                    "The system asks for your password, and apt installs the package over the old one. Disk images, capture reports and other files in your folders are not changed.",
+                    "Press Restart Greaseweazle-GUI to start the new version. If the About window was closed while the update ran, a question offers the restart instead.",
+                ),
+            ),
+            HelpSection(
+                "While it runs",
+                (
+                    "Closing the About window does not stop a download, and reopening it shows how far it has got. Cancel stops the download. Installing waits for as long as the password prompt is open; once you answer it, apt runs to the end and cannot be cancelled.",
+                    "An update is not installed while a disk is being read or written, or while any other operation with a Cancel operation button is running, because the package replaces the gw command that the operation uses. The application does not restart during an operation either. Wait until the operation has finished, then press the button again.",
+                ),
+            ),
+            HelpSection(
+                "When it cannot install",
+                (
+                    "Dismissing the password prompt installs nothing and leaves the update offered.",
+                    "Without pkexec, or when the system does not allow the installation, the message gives a command to run in a terminal instead: sudo apt install followed by the downloaded package, which is kept in ~/.cache/greaseweazle-gui/updates.",
+                    "A copy run from the source tree, or installed from the wheel, cannot update itself. The button then opens the release page; update the source tree, or install the package from the release page.",
+                    "When the release has no package for your system, the message names your system and the button opens the release page, which lists the packages it has.",
+                ),
+            ),
+        ),
+    ),
+    HelpTopic(
         "troubleshooting",
         "Troubleshooting and Diagnostics",
         "Resolve startup, format, filesystem, read, and write failures.",
@@ -325,6 +367,12 @@ HELP_TOPICS = (
                 ),
             ),
             HelpSection(
+                "Check for Application Updates cannot check or install",
+                (
+                    "Could not check for a newer version, followed by a reason, means GitHub could not be reached or its answer could not be read: no network, or GitHub limiting requests from your address, which it does after 60 an hour without an account. Try again later. The update failed, followed by a reason, comes from the download or from apt, and gives the command to install the downloaded package in a terminal. Updating Greaseweazle-GUI has the details, and the Diagnostic Log keeps each message.",
+                ),
+            ),
+            HelpSection(
                 "Diagnostic log",
                 (
                     "Help, Diagnostic Log shows command output and local filenames from failed operations. Copy or save it when requesting support. The log does not include the contents of files stored on the disk image. Clear removes only the in-memory session log.",
@@ -342,7 +390,7 @@ HELP_TOPICS = (
             HelpSection(
                 "Application menus",
                 (
-                    "File contains Open Disk Image, Inspect or Convert Image, Image Library, Create Blank Image, and Quit. Disk contains Read and Browse Disk, Extract Disk to Image, and Write Image to Disk. Drive contains drive A or B, spindle speed, USB bandwidth, cleaning, and reconnection. Help contains this User Guide, the Diagnostic Log, and About with application version and project links.",
+                    "File contains Open Disk Image, Inspect or Convert Image, Image Library, Create Blank Image, and Quit. Disk contains Read and Browse Disk, Extract Disk to Image, and Write Image to Disk. Drive contains drive A or B, spindle speed, USB bandwidth, cleaning, and reconnection. Help contains this User Guide, the Diagnostic Log, and About, which shows the application version and project links and has Check for Application Updates.",
                 ),
             ),
             HelpSection(

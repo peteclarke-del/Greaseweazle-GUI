@@ -31,9 +31,29 @@ The application can also be started from a terminal with
 
 ## Upgrading
 
-Download the newer `.deb`, verify its checksum, and install it with the same
-`apt install ./FILE.deb` command. User-created disk images and capture reports
-are outside the package and are not replaced.
+Choose **Help, About Greaseweazle-GUI** and press **Check for Application
+Updates**. When GitHub has a newer release, **Update to** downloads the package
+made for the same system as the installed one, checks it against the release's
+`SHA256SUMS`, and installs it with `pkexec apt-get install` after the system
+asks for your password. It then offers to restart the application. The check
+sends one request to api.github.com, and only when you press the button. No
+update is installed while a disk is being read or written.
+
+The installed package records the system it was built for in
+`/usr/lib/greaseweazlegui/package-target`, and the update takes only the package
+built for that system. When a release has no package for it, the About window
+says so and opens the release page instead. A copy run from the source tree or
+installed from the wheel has no such record and is also sent to the release
+page.
+
+To upgrade by hand, or from a release up to 0.2.2, which does not have the
+button, download the newer `.deb`, verify its checksum, and install it with the
+same `apt install ./FILE.deb` command. A download that Check for Application
+Updates could not install is kept in `~/.cache/greaseweazle-gui/updates` and can
+be installed the same way.
+
+User-created disk images and capture reports are outside the package and are
+not replaced.
 
 ## Removing
 

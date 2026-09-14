@@ -6,6 +6,9 @@ project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 output_dir="${1:-${project_dir}/dist}"
 python_command="${PYTHON:-python3}"
 
+# shellcheck source=packaging/package-target.sh
+source "${project_dir}/packaging/package-target.sh"
+
 package_version="$(cd "${project_dir}" && "${python_command}" -c \
     'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
 greaseweazle_version="$(tr -d '[:space:]' < "${project_dir}/packaging/greaseweazle-version.txt")"
@@ -67,6 +70,10 @@ rm -rf -- "${application_lib}/bin"
 install -d "${application_lib}/bin"
 install -m 0755 "${project_dir}/packaging/gw" "${application_lib}/bin/gw"
 install -m 0644 "${project_dir}/packaging/gw_entry.py" "${application_lib}/gw_entry.py"
+# Check for Application Updates reads this to take the package made for the
+# same system (greaseweazle_gui.app_update.PACKAGE_TARGET).
+write_package_target "${application_lib}/package-target" "${architecture}"
+chmod 0644 "${application_lib}/package-target"
 install -m 0755 "${project_dir}/packaging/greaseweazle-gui" \
     "${package_root}/usr/bin/greaseweazle-gui"
 install -m 0644 "${project_dir}/data/com.github.pclarke.GreaseweazleGUI.desktop" \
@@ -103,6 +110,6 @@ Description: Native Linux interface for Greaseweazle disk operations
  Tools ${greaseweazle_version} and the Linux device-access rules.
 EOF
 
-artifact="${output_dir}/Greaseweazle-GUI_${package_version}_ubuntu24.04_${architecture}.deb"
+artifact="${output_dir}/$(package_file_name "${package_version}" "${architecture}")"
 dpkg-deb --root-owner-group --build "${package_root}" "${artifact}"
 echo "Created ${artifact}"

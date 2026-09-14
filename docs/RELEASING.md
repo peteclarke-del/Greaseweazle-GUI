@@ -60,3 +60,21 @@ The release workflow verifies the version, runs the tests, builds the wheel and
 `.deb`, installs the package on Ubuntu 24.04, exercises the bundled `gw`, creates
 `SHA256SUMS`, stores a workflow artifact, and publishes the files in a GitHub
 Release. A failed validation or installation prevents publication.
+
+## Check for Application Updates
+
+The About window's Check for Application Updates reads the release GitHub marks
+as the latest, so every release must be tagged `vX.Y.Z` and published as a full
+release. Drafts and prereleases are never offered. The update downloads the
+package whose file name the installed copy recorded and checks it against the
+release's `SHA256SUMS`, so both must be attached to the release, as the release
+workflow does.
+
+`packaging/package-target.sh` is the only place that builds the package file
+name. `build-deb.sh` uses it for the `.deb` and writes the same name, with the
+version left as `{version}`, to `/usr/lib/greaseweazlegui/package-target` in the
+package. The release workflow checks after installing the package that the
+record names the file it built. Changing the file name, for example to add
+another distribution release or architecture, means installed copies look for
+the old name: keep names that earlier releases can still find, or say in the
+release notes that the new release must be installed by hand.

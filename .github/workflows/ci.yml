@@ -47,3 +47,29 @@ jobs:
         run: |
           desktop-file-validate data/com.github.pclarke.GreaseweazleGUI.desktop
           appstreamcli validate --no-net data/com.github.pclarke.GreaseweazleGUI.metainfo.xml
+
+  interface:
+    name: Interface tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # The interface tests need PyGObject, GTK 4 and libadwaita, which come
+      # from the distribution rather than pip, so this job uses Ubuntu's own
+      # Python 3.12 and the libadwaita the package is installed with.
+      - name: Install GTK and the display server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 \
+            xvfb dbus-daemon
+
+      - name: Run tests with the interface
+        env:
+          PYTHONPATH: src
+          # Fail rather than skip the interface tests if GTK cannot be used.
+          GREASEWEAZLE_GUI_REQUIRE_GTK: "1"
+          GSK_RENDERER: cairo
+        run: >-
+          dbus-run-session -- xvfb-run --auto-servernum
+          /usr/bin/python3 -m unittest discover -s tests -v
