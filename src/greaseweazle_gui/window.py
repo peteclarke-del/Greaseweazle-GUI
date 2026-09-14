@@ -16,7 +16,9 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from . import __version__
-from .branding import APPLICATION_NAME, APPLICATION_SUBTITLE
+from .app_update import AppRelease, parse_version
+from .app_updater import AppUpdateControls, AppUpdater, attach_to_about
+from .branding import APPLICATION_ID, APPLICATION_NAME, APPLICATION_SUBTITLE, HOMEPAGE
 from .browse_image import browsable_image_suffixes, open_browsable_image
 from .browser import DiskBrowser
 from .capture_compare import CaptureComparison, compare_captures
@@ -97,6 +99,8 @@ class MainWindow(Adw.ApplicationWindow):
         self._initial_detection_complete = False
         self._drive = "A"
         self._capture_profile = CAPTURE_PROFILES[0]
+        self.app_updater = AppUpdater(self)
+        self.about_window: Adw.AboutWindow | None = None
 
         self._create_window_actions()
         toolbar_view = Adw.ToolbarView()
@@ -238,18 +242,68 @@ class MainWindow(Adw.ApplicationWindow):
             transient_for=self,
             modal=True,
             application_name=APPLICATION_NAME,
-            application_icon="com.github.pclarke.GreaseweazleGUI",
+            application_icon=APPLICATION_ID,
             developer_name="Pete Clarke",
             version=__version__,
             comments="A native GNOME interface for Greaseweazle disk imaging and preservation.",
-            website="https://github.com/peteclarke-del/Greaseweazle-GUI",
-            support_url="https://github.com/peteclarke-del/Greaseweazle-GUI/discussions",
-            issue_url="https://github.com/peteclarke-del/Greaseweazle-GUI/issues",
+            website=HOMEPAGE,
+            support_url=f"{HOMEPAGE}/discussions",
+            issue_url=f"{HOMEPAGE}/issues",
             developers=["Pete Clarke"],
             copyright="Copyright 2026 Pete Clarke",
             license_type=Gtk.License.GPL_3_0,
         )
+        controls = AppUpdateControls(self.app_updater)
+        attach_to_about(about, controls)
+
+        def closed(_window: Adw.AboutWindow) -> bool:
+            controls.detach()
+            if self.about_window is about:
+                self.about_window = None
+            return False
+
+        about.connect("close-request", closed)
+        self.about_window = about
         about.present()
+
+    # Application updates
+
+    def operation_running(self) -> bool:
+        """True while a Greaseweazle or image operation is running."""
+        return self._active_operation is not None
+
+    def app_update_installed(self, release: AppRelease) -> None:
+        """Offer to restart when the update finished with the About window closed."""
+        if self.about_window is not None or self.operation_running():
+            return
+        dialog = Adw.MessageDialog.new(
+            self,
+            f"Restart {APPLICATION_NAME}?",
+            f"{release.name} is installed. Restart {APPLICATION_NAME} to use it.",
+        )
+        dialog.add_response("later", "_Later")
+        dialog.add_response("restart", "_Restart")
+        dialog.set_response_appearance("restart", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_close_response("later")
+        dialog.connect(
+            "response",
+            lambda _dialog, response: (
+                self.app_updater.restart() if response == "restart" else None
+            ),
+        )
+        dialog.present()
+
+    def restart(self) -> bool:
+        """Quit and start the installed version, unless an operation is running."""
+        if self.operation_running():
+            return False
+        application = self.get_application()
+        if application is not None:
+            application.restart_requested = True
+        if self.about_window is not None:
+            self.about_window.close()
+        self.close()
+        return True
 
     def _build_checking_page(self) -> Gtk.Widget:
         page = Adw.StatusPage()
@@ -2615,11 +2669,7 @@ class MainWindow(Adw.ApplicationWindow):
     ) -> Adw.MessageDialog:
         body = summary
         if diagnostic:
-            cleaned = diagnostic.strip()
-            self._diagnostic_log.append(
-                f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] "
-                f"{title}\n{summary}\n{cleaned}"
-            )
+            self.record_diagnostic(title, f"{summary}\n{diagnostic.strip()}")
         dialog = Adw.MessageDialog.new(self, title, body)
         dialog.add_response("close", "Close")
         if diagnostic:
@@ -2656,6 +2706,13 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.set_close_response("close")
         dialog.present()
         return dialog
+
+    def record_diagnostic(self, title: str, detail: str) -> None:
+        """Add an entry to the session's Diagnostic Log."""
+        self._diagnostic_log.append(
+            f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] "
+            f"{title}\n{detail}"
+        )
 
     def _copy_diagnostic(self, diagnostic: str) -> None:
         clipboard = Gdk.Display.get_default().get_clipboard()
@@ -2798,9 +2855,8 @@ class MainWindow(Adw.ApplicationWindow):
             self._show_dashboard()
         if silent:
             if was_connected and result.diagnostic:
-                self._diagnostic_log.append(
-                    f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] "
-                    f"Device disconnected\n{result.summary}\n{result.diagnostic}"
+                self.record_diagnostic(
+                    "Device disconnected", f"{result.summary}\n{result.diagnostic}"
                 )
             return GLib.SOURCE_REMOVE
         dialog = Adw.MessageDialog.new(
@@ -2853,6 +2909,24 @@ class MainWindow(Adw.ApplicationWindow):
             self._browse_disk_button.set_sensitive(True)
             self._refresh_welcome_status()
             self._show_dashboard()
+        elif state == "app-update":
+            # The About window after Check for Application Updates found the next
+            # minor version. Nothing is fetched from GitHub.
+            self.show_documentation_state("main")
+            major, minor, _patch = parse_version(__version__) or (0, 0, 0)
+            version = f"{major}.{minor + 1}.0"
+            download = f"{HOMEPAGE}/releases/download/v{version}"
+            self.app_updater.show_result(
+                AppRelease(
+                    version,
+                    f"v{version}",
+                    f"{APPLICATION_NAME} {version}",
+                    f"{HOMEPAGE}/releases/tag/v{version}",
+                    package_url=f"{download}/package.deb",
+                    sums_url=f"{download}/SHA256SUMS",
+                )
+            )
+            self._show_about()
         elif state == "read-progress":
             self._reading_page.set_title("Reading Atari ST 800 KB…")
             self._reading_page.set_description(
