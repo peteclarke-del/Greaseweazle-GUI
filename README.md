@@ -197,12 +197,12 @@ Greaseweazle Host Tools 1.23, and the official Linux device-access rules. GTK,
 libadwaita, and Python are installed or updated through the distribution package
 manager.
 
-1. Download `Greaseweazle-GUI_0.2.2_ubuntu24.04_amd64.deb` and `SHA256SUMS`
+1. Download `Greaseweazle-GUI_0.3.0_ubuntu24.04_amd64.deb` and `SHA256SUMS`
    from the matching GitHub Release.
 2. From the download folder, run
    `sha256sum --check --ignore-missing SHA256SUMS`.
 3. Install with
-   `sudo apt install ./Greaseweazle-GUI_0.2.2_ubuntu24.04_amd64.deb`.
+   `sudo apt install ./Greaseweazle-GUI_0.3.0_ubuntu24.04_amd64.deb`.
 4. Unplug and reconnect the Greaseweazle so the new device rule takes effect.
 5. Open **Greaseweazle-GUI** from the GNOME application grid, or run
    `greaseweazle-gui` from a terminal.
@@ -210,13 +210,13 @@ manager.
 Remove it with `sudo apt remove greaseweazlegui`. User disk images, capture
 reports, and application data are not removed.
 
-The `greaseweazle_gui-0.2.2-py3-none-any.whl` wheel is also attached for
+The `greaseweazle_gui-0.3.0-py3-none-any.whl` wheel is also attached for
 developers. It does not install GTK, libadwaita, the Greaseweazle host tools,
 desktop metadata, or device rules, so normal desktop users should install the
 `.deb` package.
 
 Maintainers create a release by updating the version in `pyproject.toml`,
-merging the release commit, and pushing a matching tag such as `v0.2.2`. The
+merging the release commit, and pushing a matching tag such as `v0.3.0`. The
 release workflow tests the exact tag, builds and installs the package on Ubuntu
 24.04, generates SHA-256 checksums, and publishes all files to GitHub Releases.
 
