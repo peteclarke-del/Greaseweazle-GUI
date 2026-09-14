@@ -20,6 +20,15 @@
     </p>
   </description>
   <releases>
+    <release version="0.3.0" date="2026-09-14">
+      <description>
+        <ul>
+          <li>Add Check for Application Updates to the About window. It downloads the package for the installed system, verifies it against the release checksums, installs it, and offers a restart.</li>
+          <li>Add an Updating Greaseweazle-GUI topic to the user guide.</li>
+          <li>Update the bundled bitarray library to 3.11.0.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.2" date="2026-08-25">
       <description>
         <ul>

@@ -99,6 +99,9 @@ simple read, extract, and write workflows.
   and official udev rules.
 - [Complete] Validate tag and project versions, install-test the package, create
   SHA-256 checksums, and publish release assets through GitHub Actions.
+- [Complete] Check for a newer release from the About window, then download the
+  package built for the installed system, verify it against the release
+  checksums, install it, and offer a restart.
 - Add packages for further distribution families after they can be built and
   install-tested on their native runners.
 
