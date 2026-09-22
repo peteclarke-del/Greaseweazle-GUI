@@ -81,7 +81,10 @@ all mutations are transactional and recoverable.
 ## 6. Library and hardware tools
 
 - [In progress] Add an optional local catalogue. Folder scanning, format/volume
-  labels, hashes, and duplicate detection are implemented; thumbnails and notes remain.
+  labels, hashes, duplicate detection, and images inside zip files are
+  implemented; thumbnails and notes remain.
+- [Complete] Accept zipped disk images wherever a source image is chosen,
+  unpacking the chosen image privately and never modifying the archive.
 - [In progress] Drive A/B selection is implemented; explicit selection among
   multiple USB Greaseweazle devices remains.
 - [Complete] Add USB bandwidth testing, cleaning confirmation, RPM reporting, and guidance
