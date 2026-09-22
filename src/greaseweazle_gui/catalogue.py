@@ -7,32 +7,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .image_inspector import inspect_image
-
-IMAGE_SUFFIXES = frozenset(
-    {
-        ".adf",
-        ".st",
-        ".scp",
-        ".a2r",
-        ".img",
-        ".ima",
-        ".ssd",
-        ".dsd",
-        ".adm",
-        ".ads",
-        ".adl",
-        ".do",
-        ".po",
-        ".d64",
-        ".d71",
-        ".d81",
-        ".d1m",
-        ".d2m",
-        ".d4m",
-        ".sf7",
-        ".hfe",
-    }
-)
+from .image_sources import IMAGE_SUFFIXES
 
 
 @dataclass(frozen=True, slots=True)

@@ -172,6 +172,7 @@ HELP_TOPICS = (
                 "Before writing",
                 (
                     "Writing overwrites the floppy in the selected drive. The application inspects content first, then uses extension and size only as a fallback. You must confirm the final Greaseweazle format from the complete manufacturer-grouped list.",
+                    "A zipped image can be chosen as the source. The disk image inside is unpacked to a private temporary folder and inspected exactly as if it had been chosen directly. If the zip holds several disk images, choose which one to write. The zip itself is never modified.",
                     "SCP and A2R are offered as raw flux with no sector conversion. HxC HFE v1 and v3 images are recognised from their headers and their encoded tracks are written directly. This preserves more track structure than forcing a sector decode, although HFE is not a multi-revolution preservation replacement for SCP or A2R.",
                 ),
                 (
@@ -224,6 +225,7 @@ HELP_TOPICS = (
                 "Inspection",
                 (
                     "File, Inspect or Convert Image calculates SHA-256 and reports the content-based format decision, geometry, byte size, filesystem, volume label, and structural integrity. Inspection is read-only and works without a Greaseweazle device.",
+                    "Open Disk Image, Inspect or Convert Image, and Compare also accept a zipped image. The zip is recognised by its contents, the chosen disk image is unpacked to a private temporary folder, and the zip is never modified. When it holds several disk images, such as a multi-disk game, you choose one. Readme files, artwork, and hidden files inside it are ignored.",
                 ),
             ),
             HelpSection(

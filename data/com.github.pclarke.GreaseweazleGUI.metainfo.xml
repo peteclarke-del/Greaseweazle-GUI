@@ -15,8 +15,8 @@
       floppy disk images, with offline browsing for AmigaDOS, FAT12, Acorn
       DFS/ADFS, Commodore 1541, Color Disk BASIC, and OS-9 filesystems,
       automatic browsing of HFE and raw-flux containers, preservation reports,
-      image inspection and conversion, HxC HFE track-image support, and
-      Greaseweazle drive tools.
+      image inspection and conversion, zipped source images, HxC HFE
+      track-image support, and Greaseweazle drive tools.
     </p>
   </description>
   <releases>
