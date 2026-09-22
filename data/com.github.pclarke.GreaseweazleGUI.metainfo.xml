@@ -20,6 +20,15 @@
     </p>
   </description>
   <releases>
+    <release version="0.4.0" date="2026-09-22">
+      <description>
+        <ul>
+          <li>Open, inspect, compare, and write disk images supplied inside a zip file. A zip holding several images asks which one to use, and the zip is never modified.</li>
+          <li>Catalogue the disk images inside zip files in the Image Library, including duplicates of loose images.</li>
+          <li>Update the bundled urllib3 library to 2.8.0.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-09-14">
       <description>
         <ul>
