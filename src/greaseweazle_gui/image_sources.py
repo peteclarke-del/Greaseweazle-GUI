@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import zipfile
 import zlib
+from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 
 IMAGE_SUFFIXES = frozenset(
@@ -75,6 +76,23 @@ def _is_ignorable(name: str) -> bool:
     return any(part == "__MACOSX" or part.startswith(".") for part in parts)
 
 
+def _image_members(
+    bundle: zipfile.ZipFile, *, recognised_only: bool
+) -> tuple[str, ...]:
+    """Choose the disk-image members from the archive's directory alone."""
+    files = [
+        info.filename
+        for info in bundle.infolist()
+        if not info.is_dir() and not _is_ignorable(info.filename)
+    ]
+    images = [
+        name for name in files if PurePosixPath(name).suffix.lower() in IMAGE_SUFFIXES
+    ]
+    if not images and len(files) == 1 and not recognised_only:
+        images = files
+    return tuple(sorted(images, key=str.casefold))
+
+
 def zipped_images(archive: Path) -> tuple[str, ...]:
     """Return the members of *archive* that should be offered as disk images.
 
@@ -85,27 +103,18 @@ def zipped_images(archive: Path) -> tuple[str, ...]:
     """
     try:
         with zipfile.ZipFile(archive) as bundle:
-            files = [
-                info.filename
-                for info in bundle.infolist()
-                if not info.is_dir() and not _is_ignorable(info.filename)
-            ]
+            images = _image_members(bundle, recognised_only=False)
     except (OSError, zipfile.BadZipFile) as error:
         raise ZipSourceError(f"The zip archive could not be read: {error}") from error
-    images = [
-        name for name in files if PurePosixPath(name).suffix.lower() in IMAGE_SUFFIXES
-    ]
-    if not images and len(files) == 1:
-        images = files
     if not images:
         raise ZipSourceError(
             "The zip archive does not contain a recognised disk image."
         )
-    return tuple(sorted(images, key=str.casefold))
+    return images
 
 
-def extract_zipped_image(archive: Path, member: str, destination: Path) -> Path:
-    """Unpack one *member* of *archive* into *destination* and return its path.
+def _unpack(bundle: zipfile.ZipFile, member: str, destination: Path) -> Path:
+    """Stream one member of an open archive into *destination*.
 
     Only the member's own filename is kept, so a member named with ``..`` or an
     absolute path cannot be written outside *destination*. The size is enforced
@@ -114,11 +123,7 @@ def extract_zipped_image(archive: Path, member: str, destination: Path) -> Path:
     name = PurePosixPath(member.replace("\\", "/")).name or "image"
     target = destination / name
     try:
-        with (
-            zipfile.ZipFile(archive) as bundle,
-            bundle.open(member) as source,
-            target.open("wb") as output,
-        ):
+        with bundle.open(member) as source, target.open("wb") as output:
             written = 0
             while chunk := source.read(1024 * 1024):
                 written += len(chunk)
@@ -148,3 +153,41 @@ def extract_zipped_image(archive: Path, member: str, destination: Path) -> Path:
         target.unlink(missing_ok=True)
         raise ZipSourceError(f"{name} could not be unpacked: {error}") from error
     return target
+
+
+def extract_zipped_image(archive: Path, member: str, destination: Path) -> Path:
+    """Unpack one *member* of *archive* into *destination* and return its path."""
+    try:
+        with zipfile.ZipFile(archive) as bundle:
+            return _unpack(bundle, member, destination)
+    except (OSError, zipfile.BadZipFile) as error:
+        raise ZipSourceError(f"The zip archive could not be read: {error}") from error
+
+
+def unpack_each_zipped_image(
+    archive: Path, destination: Path
+) -> Iterator[tuple[str, Path | ZipSourceError]]:
+    """Unpack the disk images in *archive* one at a time, for bulk inspection.
+
+    Members are chosen from the archive's directory, so readme files, artwork
+    and other non-image members are never decompressed, and only recognised
+    image suffixes are considered. The archive is opened once. Each image is
+    yielded with its unpacked path, or with the error that stopped it, and its
+    file is deleted as soon as the caller asks for the next, so a large archive
+    never occupies more than one image's worth of scratch space.
+    """
+    try:
+        bundle = zipfile.ZipFile(archive)
+    except (OSError, zipfile.BadZipFile) as error:
+        raise ZipSourceError(f"The zip archive could not be read: {error}") from error
+    with bundle:
+        for member in _image_members(bundle, recognised_only=True):
+            try:
+                image = _unpack(bundle, member, destination)
+            except ZipSourceError as error:
+                yield member, error
+                continue
+            try:
+                yield member, image
+            finally:
+                image.unlink(missing_ok=True)

@@ -526,18 +526,27 @@ class MainWindow(Adw.ApplicationWindow):
             css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE
         )
         for entry in entries:
+            details = entry.problem or (
+                f"{entry.format_label} • {entry.volume_label or entry.filesystem or 'unrecognised filesystem'}"
+            )
             row = Adw.ActionRow(
-                title=entry.path.name,
-                subtitle=(
-                    f"{entry.format_label} • {entry.volume_label or entry.filesystem or 'unrecognised filesystem'}"
-                ),
+                title=entry.name,
+                subtitle=f"in {entry.path.name} • {details}"
+                if entry.member
+                else details,
             )
             if entry.duplicate_count > 1:
                 badge = Gtk.Label(
                     label=f"{entry.duplicate_count} copies", css_classes=["warning"]
                 )
                 row.add_suffix(badge)
-            row.set_tooltip_text(f"{entry.path}\nSHA-256 {entry.sha256}")
+            elif entry.problem:
+                row.add_suffix(Gtk.Label(label="Unreadable", css_classes=["error"]))
+            row.set_tooltip_text(
+                f"{entry.location}\nSHA-256 {entry.sha256}"
+                if entry.sha256
+                else entry.location
+            )
             listing.append(row)
         scroller = Gtk.ScrolledWindow(min_content_height=360, max_content_height=520)
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
