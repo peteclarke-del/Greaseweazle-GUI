@@ -49,13 +49,16 @@ The current application:
 - displays live cylinder, head, track and verification progress while writing;
 - inspects images offline, showing format, geometry, filesystem, volume,
   integrity, size, and SHA-256;
+- accepts a zipped disk image wherever a source image is chosen, unpacking it
+  to a private folder and asking which image to use when the zip holds several;
 - atomically converts images while preserving the source and warning before a
   potentially lossy raw-flux conversion;
 - recognises HxC HFE v1 and v3 images by header, writes their encoded tracks
   directly, and creates or converts captures and blank media as `.hfe`;
 - compares captures by hash and changed track side, and optionally writes a
   JSON capture report with device/profile/provenance information;
-- catalogues a local image folder and identifies duplicate captures;
+- catalogues a local image folder, including the images inside zip files, and
+  identifies duplicate captures;
 - monitors device removal/reconnection and supports physical drive A/B;
 - checks for a newer release from the About window when asked, then downloads,
   verifies and installs the package for the same system and offers a restart;
@@ -156,13 +159,31 @@ detected geometry, filesystem/volume, integrity, and SHA-256. It can compare a
 second capture or, when the `gw` host tools are installed, convert to any
 creatable supported format. Source images are never modified.
 
+**Zipped images** can be chosen wherever a source image is asked for: Open Disk
+Image, Inspect or Convert Image, Compare, and Write Image to Disk. The zip is
+recognised by its contents, so its name does not matter. The disk image inside
+is unpacked to a private temporary folder and then detected and handled exactly
+as if it had been chosen directly; the archive itself is never modified. When
+the zip holds several disk images, such as a multi-disk game, you choose which
+one to use. Images are recognised by suffix, and a zip holding a single file
+with an unfamiliar name offers that file for content detection. Readme files,
+artwork, hidden files and macOS `__MACOSX` folders are ignored.
+Password-protected members and anything larger than 256 MB when unpacked are
+refused.
+
 For HxC floppy emulators, enable the HFE output option after choosing the target
 machine format. HFE conversion needs both pieces of information: the disk
 format defines the track encoding and geometry, while `.hfe` selects the HxC
 container.
 
 **Image library** scans a chosen local folder read-only and groups duplicate
-images by SHA-256. Nothing is uploaded or stored outside that folder.
+images by SHA-256. Nothing is uploaded or stored outside that folder. It also
+catalogues the disk images inside zip files. Only the zip's directory is read to
+find them, so readme files and artwork are never unpacked. Each image is then
+unpacked on its own to a temporary folder, inspected like a loose image, and
+deleted before the next. A zipped image and a loose copy of the same disk are
+therefore reported as duplicates, and a zip that cannot be read is listed as
+unreadable rather than stopping the scan.
 
 ## Drive maintenance
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 import tempfile
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import datetime
 from pathlib import Path
 
@@ -65,6 +65,14 @@ from .hardware_tools import HardwareToolResult, run_hardware_tool
 from .help_view import HelpView
 from .image_detection import ImageFormatGuess, detect_image_format
 from .image_inspector import ImageInspection, inspect_image
+from .image_sources import (
+    ARCHIVE_SUFFIXES,
+    IMAGE_SUFFIXES,
+    ZipSourceError,
+    extract_zipped_image,
+    is_zip_archive,
+    zipped_images,
+)
 from .operation import OperationController
 from .read_disk import ReadProgress, ReadResult, read_disk
 from .retry_tracks import RetryTracksResult, retry_damaged_tracks
@@ -518,18 +526,27 @@ class MainWindow(Adw.ApplicationWindow):
             css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE
         )
         for entry in entries:
+            details = entry.problem or (
+                f"{entry.format_label} • {entry.volume_label or entry.filesystem or 'unrecognised filesystem'}"
+            )
             row = Adw.ActionRow(
-                title=entry.path.name,
-                subtitle=(
-                    f"{entry.format_label} • {entry.volume_label or entry.filesystem or 'unrecognised filesystem'}"
-                ),
+                title=entry.name,
+                subtitle=f"in {entry.path.name} • {details}"
+                if entry.member
+                else details,
             )
             if entry.duplicate_count > 1:
                 badge = Gtk.Label(
                     label=f"{entry.duplicate_count} copies", css_classes=["warning"]
                 )
                 row.add_suffix(badge)
-            row.set_tooltip_text(f"{entry.path}\nSHA-256 {entry.sha256}")
+            elif entry.problem:
+                row.add_suffix(Gtk.Label(label="Unreadable", css_classes=["error"]))
+            row.set_tooltip_text(
+                f"{entry.location}\nSHA-256 {entry.sha256}"
+                if entry.sha256
+                else entry.location
+            )
             listing.append(row)
         scroller = Gtk.ScrolledWindow(min_content_height=360, max_content_height=520)
         scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -614,6 +631,109 @@ class MainWindow(Adw.ApplicationWindow):
         self._show_workspace(result.summary, f"Drive {self._drive}", scroller)
         return GLib.SOURCE_REMOVE
 
+    def _add_image_filters(
+        self, chooser: Gtk.FileChooserNative, name: str, suffixes: Iterable[str]
+    ) -> None:
+        """Offer *suffixes*, zip archives that may hold them, and all files."""
+        image_filter = Gtk.FileFilter()
+        image_filter.set_name(name)
+        for suffix in sorted(set(suffixes) | ARCHIVE_SUFFIXES):
+            image_filter.add_pattern(f"*{suffix}")
+            image_filter.add_pattern(f"*{suffix.upper()}")
+        chooser.add_filter(image_filter)
+        all_files = Gtk.FileFilter()
+        all_files.set_name("All files")
+        all_files.add_pattern("*")
+        chooser.add_filter(all_files)
+
+    def _with_source_image(
+        self, selected: Path, use_image: Callable[[Path], None]
+    ) -> None:
+        """Give *use_image* a disk image, unpacking it first from a zip archive.
+
+        A zip holding one disk image is unpacked straight away. When it holds
+        several, the user chooses one. Either way the unpacked image is then
+        handled exactly as if it had been chosen directly.
+        """
+        if not is_zip_archive(selected):
+            use_image(selected)
+            return
+        try:
+            members = zipped_images(selected)
+        except ZipSourceError as error:
+            self._show_error(
+                "Unable to open zip archive",
+                f"{selected.name} could not be used as a disk image.",
+                str(error),
+            )
+            return
+        if len(members) == 1:
+            self._unpack_source_image(selected, members[0], use_image)
+            return
+        dialog = Adw.MessageDialog.new(
+            self,
+            "Choose a disk image",
+            f"{selected.name} contains {len(members)} disk images. "
+            "Choose the one to use. The archive is not modified.",
+        )
+        choice = Gtk.DropDown(model=Gtk.StringList.new(list(members)), selected=0)
+        dialog.set_extra_child(choice)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("use", "Use image")
+        dialog.set_response_appearance("use", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("use")
+        dialog.set_close_response("cancel")
+
+        def respond(_dialog: Adw.MessageDialog, response: str) -> None:
+            if response == "use":
+                self._unpack_source_image(
+                    selected, members[choice.get_selected()], use_image
+                )
+
+        dialog.connect("response", respond)
+        dialog.present()
+
+    def _unpack_source_image(
+        self, archive: Path, member: str, use_image: Callable[[Path], None]
+    ) -> None:
+        self._reading_page.set_title("Unpacking disk image…")
+        self._reading_page.set_description(
+            f"Unpacking from {archive.name}. The archive is not modified."
+        )
+        self._read_progress.set_fraction(0)
+        self._read_progress.set_text("")
+        self._progress_track.set_text(member)
+        self._progress_sectors.set_text("")
+        self._progress_message.set_text("")
+        self._stack.set_visible_child_name("reading")
+        # Kept for the session: the unpacked image may still be browsed,
+        # converted or compared after the operation that unpacked it.
+        temporary = tempfile.TemporaryDirectory(prefix="greaseweazle-zip-")
+        self._temporary_directories.append(temporary)
+
+        def worker() -> None:
+            try:
+                image = extract_zipped_image(archive, member, Path(temporary.name))
+            except ZipSourceError as error:
+                GLib.idle_add(self._finish_unpack_error, archive, str(error))
+                return
+            GLib.idle_add(self._finish_unpack, image, use_image)
+
+        threading.Thread(target=worker, name="zip-unpacker", daemon=True).start()
+
+    def _finish_unpack(self, image: Path, use_image: Callable[[Path], None]) -> bool:
+        use_image(image)
+        return GLib.SOURCE_REMOVE
+
+    def _finish_unpack_error(self, archive: Path, diagnostic: str) -> bool:
+        self._stack.set_visible_child_name("dashboard")
+        self._show_error(
+            "Unable to unpack disk image",
+            f"The disk image in {archive.name} could not be unpacked.",
+            diagnostic,
+        )
+        return GLib.SOURCE_REMOVE
+
     def _choose_inspection_image(self, _button: Gtk.Button | None) -> None:
         chooser = Gtk.FileChooserNative.new(
             "Inspect disk image",
@@ -622,33 +742,7 @@ class MainWindow(Adw.ApplicationWindow):
             "Inspect",
             "Cancel",
         )
-        image_filter = Gtk.FileFilter()
-        image_filter.set_name("Disk images")
-        for pattern in (
-            "*.adf",
-            "*.st",
-            "*.scp",
-            "*.a2r",
-            "*.img",
-            "*.ima",
-            "*.ssd",
-            "*.dsd",
-            "*.adm",
-            "*.ads",
-            "*.adl",
-            "*.do",
-            "*.po",
-            "*.d64",
-            "*.d71",
-            "*.d81",
-            "*.d1m",
-            "*.d2m",
-            "*.d4m",
-            "*.sf7",
-            "*.hfe",
-        ):
-            image_filter.add_pattern(pattern)
-        chooser.add_filter(image_filter)
+        self._add_image_filters(chooser, "Disk images", IMAGE_SUFFIXES)
         chooser.connect("response", self._on_inspection_image_selected)
         self._file_chooser = chooser
         chooser.show()
@@ -666,7 +760,9 @@ class MainWindow(Adw.ApplicationWindow):
                 "Choose a local image", "Inspection requires a local file."
             )
             return
-        image_path = Path(selected_path)
+        self._with_source_image(Path(selected_path), self._inspect_source_image)
+
+    def _inspect_source_image(self, image_path: Path) -> None:
         self._reading_page.set_title("Inspecting disk image…")
         self._reading_page.set_description("Reading metadata and calculating SHA-256.")
         self._read_progress.set_fraction(0)
@@ -750,6 +846,7 @@ class MainWindow(Adw.ApplicationWindow):
             "Compare",
             "Cancel",
         )
+        self._add_image_filters(chooser, "Disk images", IMAGE_SUFFIXES)
         chooser.connect("response", self._on_comparison_image, first)
         self._file_chooser = chooser
         chooser.show()
@@ -764,7 +861,11 @@ class MainWindow(Adw.ApplicationWindow):
         selected_path = selected.get_path() if selected is not None else None
         if selected_path is None:
             return
-        second = Path(selected_path)
+        self._with_source_image(
+            Path(selected_path), lambda second: self._compare_images(first, second)
+        )
+
+    def _compare_images(self, first: Path, second: Path) -> None:
         self._reading_page.set_title("Comparing captures…")
         self._reading_page.set_description(
             "Hashing both images and comparing track sides."
@@ -975,16 +1076,9 @@ class MainWindow(Adw.ApplicationWindow):
             "Open image",
             "Cancel",
         )
-        image_filter = Gtk.FileFilter()
-        image_filter.set_name("Browseable disk images")
-        for suffix in sorted(browsable_image_suffixes()):
-            image_filter.add_pattern(f"*{suffix}")
-            image_filter.add_pattern(f"*{suffix.upper()}")
-        chooser.add_filter(image_filter)
-        all_files = Gtk.FileFilter()
-        all_files.set_name("All files")
-        all_files.add_pattern("*")
-        chooser.add_filter(all_files)
+        self._add_image_filters(
+            chooser, "Browseable disk images", browsable_image_suffixes()
+        )
         chooser.connect("response", self._on_existing_image_selected)
         self._file_chooser = chooser
         chooser.show()
@@ -1003,7 +1097,9 @@ class MainWindow(Adw.ApplicationWindow):
                 "The image browser needs a file on the local filesystem.",
             )
             return
-        image_path = Path(selected_path)
+        self._with_source_image(Path(selected_path), self._open_existing_image)
+
+    def _open_existing_image(self, image_path: Path) -> None:
         self._reading_page.set_title("Opening disk image…")
         self._reading_page.set_description(
             "Reading the directory without extracting file contents."
@@ -1138,37 +1234,7 @@ class MainWindow(Adw.ApplicationWindow):
             "Open image",
             "Cancel",
         )
-        image_filter = Gtk.FileFilter()
-        image_filter.set_name("Floppy disk images")
-        for pattern in (
-            "*.adf",
-            "*.st",
-            "*.scp",
-            "*.a2r",
-            "*.img",
-            "*.ima",
-            "*.ssd",
-            "*.dsd",
-            "*.adm",
-            "*.ads",
-            "*.adl",
-            "*.do",
-            "*.po",
-            "*.d64",
-            "*.d71",
-            "*.d81",
-            "*.d1m",
-            "*.d2m",
-            "*.d4m",
-            "*.sf7",
-            "*.hfe",
-        ):
-            image_filter.add_pattern(pattern)
-        chooser.add_filter(image_filter)
-        all_files = Gtk.FileFilter()
-        all_files.set_name("All files")
-        all_files.add_pattern("*")
-        chooser.add_filter(all_files)
+        self._add_image_filters(chooser, "Floppy disk images", IMAGE_SUFFIXES)
         chooser.connect("response", self._on_write_image_selected)
         self._file_chooser = chooser
         chooser.show()
@@ -1403,7 +1469,9 @@ class MainWindow(Adw.ApplicationWindow):
                 "Greaseweazle needs a disk image on the local filesystem.",
             )
             return
-        image_path = Path(selected_path)
+        self._with_source_image(Path(selected_path), self._examine_write_image)
+
+    def _examine_write_image(self, image_path: Path) -> None:
         self._reading_page.set_title("Examining disk image…")
         self._reading_page.set_description(
             "Checking the image contents before choosing a write format."

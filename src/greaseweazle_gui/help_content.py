@@ -172,6 +172,7 @@ HELP_TOPICS = (
                 "Before writing",
                 (
                     "Writing overwrites the floppy in the selected drive. The application inspects content first, then uses extension and size only as a fallback. You must confirm the final Greaseweazle format from the complete manufacturer-grouped list.",
+                    "A zipped image can be chosen as the source. The disk image inside is unpacked to a private temporary folder and inspected exactly as if it had been chosen directly. If the zip holds several disk images, choose which one to write. The zip itself is never modified.",
                     "SCP and A2R are offered as raw flux with no sector conversion. HxC HFE v1 and v3 images are recognised from their headers and their encoded tracks are written directly. This preserves more track structure than forcing a sector decode, although HFE is not a multi-revolution preservation replacement for SCP or A2R.",
                 ),
                 (
@@ -224,6 +225,7 @@ HELP_TOPICS = (
                 "Inspection",
                 (
                     "File, Inspect or Convert Image calculates SHA-256 and reports the content-based format decision, geometry, byte size, filesystem, volume label, and structural integrity. Inspection is read-only and works without a Greaseweazle device.",
+                    "Open Disk Image, Inspect or Convert Image, and Compare also accept a zipped image. The zip is recognised by its contents, the chosen disk image is unpacked to a private temporary folder, and the zip is never modified. When it holds several disk images, such as a multi-disk game, you choose one. Readme files, artwork, and hidden files inside it are ignored.",
                 ),
             ),
             HelpSection(
@@ -275,7 +277,8 @@ HELP_TOPICS = (
                 "Local catalogue",
                 (
                     "File, Image Library recursively scans a folder for known floppy image suffixes. It records path, size, SHA-256, detected format, filesystem, and volume label for the current view. Files are inspected read-only and nothing is uploaded.",
-                    "Matching SHA-256 values are exact duplicates. Similar filenames or labels do not count as duplicates. Symbolic links are skipped and a safety limit prevents an unexpectedly large directory tree from consuming unbounded resources.",
+                    "Disk images inside zip files are catalogued too and shown with the name of their zip. Only the zip's directory is read to find them, so readme files and artwork are never unpacked. Each image is unpacked on its own to a temporary folder, inspected, and deleted before the next. A zip that cannot be read is listed as unreadable and the scan continues.",
+                    "Matching SHA-256 values are exact duplicates, including a zipped image and a loose copy of the same disk. Similar filenames or labels do not count as duplicates. Symbolic links are skipped and a safety limit prevents an unexpectedly large directory tree from consuming unbounded resources.",
                 ),
             ),
         ),
