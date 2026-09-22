@@ -21,7 +21,8 @@ This document describes the functionality in version 0.3.0.
   conflict handling, local file operations, and GNOME Files integration
 - Image inspection, conversion, comparison, SHA-256, and local cataloguing
 - Zipped disk images accepted by Open, Inspect, Compare, and Write, with a
-  choice of image when the zip holds several
+  choice of image when the zip holds several, and catalogued by the Image
+  Library
 - HxC HFE v1/v3 inspection, automatic filesystem browsing, direct writing,
   capture, conversion, and blank-image output using the bundled Greaseweazle
   codecs

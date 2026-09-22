@@ -15,6 +15,7 @@ from greaseweazle_gui.image_sources import (
     ZipSourceError,
     extract_zipped_image,
     is_zip_archive,
+    unpack_each_zipped_image,
     zipped_images,
 )
 
@@ -135,6 +136,50 @@ class ImageSourcesTests(unittest.TestCase):
             self.assertRaisesRegex(ZipSourceError, "password-protected"),
         ):
             extract_zipped_image(archive, "secret.adf", self.destination)
+
+    def test_bulk_unpacking_keeps_one_image_on_disk_at_a_time(self) -> None:
+        archive = self.make_zip(
+            {"b.adf": b"second", "a.adf": b"first", "notes.txt": b"skip"}
+        )
+        seen = []
+
+        for member, unpacked in unpack_each_zipped_image(archive, self.destination):
+            assert isinstance(unpacked, Path)
+            seen.append((member, unpacked.read_bytes()))
+            self.assertEqual(list(self.destination.iterdir()), [unpacked])
+
+        self.assertEqual(seen, [("a.adf", b"first"), ("b.adf", b"second")])
+        self.assertEqual(list(self.destination.iterdir()), [])
+
+    def test_bulk_unpacking_opens_the_archive_once(self) -> None:
+        archive = self.make_zip({"a.adf": b"1", "b.adf": b"2", "c.adf": b"3"})
+        real_zip = zipfile.ZipFile
+
+        with patch.object(
+            image_sources.zipfile, "ZipFile", side_effect=real_zip
+        ) as opened:
+            members = [
+                member
+                for member, _ in unpack_each_zipped_image(archive, self.destination)
+            ]
+
+        self.assertEqual(members, ["a.adf", "b.adf", "c.adf"])
+        self.assertEqual(opened.call_count, 1)
+
+    def test_bulk_unpacking_offers_only_recognised_names(self) -> None:
+        archive = self.make_zip({"MYSTERY.BIN": AMIGA_DD})
+
+        self.assertEqual(list(unpack_each_zipped_image(archive, self.destination)), [])
+
+    def test_bulk_unpacking_reports_a_bad_member_and_continues(self) -> None:
+        archive = self.make_zip({"a.adf": bytes(4096), "b.adf": b"small"})
+
+        with patch.object(image_sources, "MAX_UNPACKED_BYTES", 1024):
+            results = list(unpack_each_zipped_image(archive, self.destination))
+
+        self.assertIsInstance(results[0][1], ZipSourceError)
+        self.assertEqual(results[1][0], "b.adf")
+        self.assertIsInstance(results[1][1], Path)
 
     def test_catalogue_scans_the_shared_suffix_list(self) -> None:
         self.assertIs(catalogue.IMAGE_SUFFIXES, IMAGE_SUFFIXES)

@@ -57,7 +57,8 @@ The current application:
   directly, and creates or converts captures and blank media as `.hfe`;
 - compares captures by hash and changed track side, and optionally writes a
   JSON capture report with device/profile/provenance information;
-- catalogues a local image folder and identifies duplicate captures;
+- catalogues a local image folder, including the images inside zip files, and
+  identifies duplicate captures;
 - monitors device removal/reconnection and supports physical drive A/B;
 - checks for a newer release from the About window when asked, then downloads,
   verifies and installs the package for the same system and offers a restart;
@@ -168,7 +169,7 @@ one to use. Images are recognised by suffix, and a zip holding a single file
 with an unfamiliar name offers that file for content detection. Readme files,
 artwork, hidden files and macOS `__MACOSX` folders are ignored.
 Password-protected members and anything larger than 256 MB when unpacked are
-refused. The Image Library does not look inside zip files.
+refused.
 
 For HxC floppy emulators, enable the HFE output option after choosing the target
 machine format. HFE conversion needs both pieces of information: the disk
@@ -176,7 +177,13 @@ format defines the track encoding and geometry, while `.hfe` selects the HxC
 container.
 
 **Image library** scans a chosen local folder read-only and groups duplicate
-images by SHA-256. Nothing is uploaded or stored outside that folder.
+images by SHA-256. Nothing is uploaded or stored outside that folder. It also
+catalogues the disk images inside zip files. Only the zip's directory is read to
+find them, so readme files and artwork are never unpacked. Each image is then
+unpacked on its own to a temporary folder, inspected like a loose image, and
+deleted before the next. A zipped image and a loose copy of the same disk are
+therefore reported as duplicates, and a zip that cannot be read is listed as
+unreadable rather than stopping the scan.
 
 ## Drive maintenance
 

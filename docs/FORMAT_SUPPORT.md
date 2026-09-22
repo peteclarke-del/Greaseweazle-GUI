@@ -25,6 +25,11 @@ offers that file for content detection. A file that merely contains a zip near
 its end is not mistaken for an archive: the zip must also start at the
 beginning of the file.
 
+The Image Library also catalogues zipped images. It chooses them from the zip's
+directory by suffix alone, without the single-file fallback, so a zip of
+manuals or artwork adds nothing to the library. Only those members are
+unpacked, one at a time, and each is deleted once it has been inspected.
+
 ## Browseable filesystems
 
 | Filesystem | Image suffixes | Current behaviour |

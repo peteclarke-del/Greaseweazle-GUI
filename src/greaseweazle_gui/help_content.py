@@ -277,7 +277,8 @@ HELP_TOPICS = (
                 "Local catalogue",
                 (
                     "File, Image Library recursively scans a folder for known floppy image suffixes. It records path, size, SHA-256, detected format, filesystem, and volume label for the current view. Files are inspected read-only and nothing is uploaded.",
-                    "Matching SHA-256 values are exact duplicates. Similar filenames or labels do not count as duplicates. Symbolic links are skipped and a safety limit prevents an unexpectedly large directory tree from consuming unbounded resources.",
+                    "Disk images inside zip files are catalogued too and shown with the name of their zip. Only the zip's directory is read to find them, so readme files and artwork are never unpacked. Each image is unpacked on its own to a temporary folder, inspected, and deleted before the next. A zip that cannot be read is listed as unreadable and the scan continues.",
+                    "Matching SHA-256 values are exact duplicates, including a zipped image and a loose copy of the same disk. Similar filenames or labels do not count as duplicates. Symbolic links are skipped and a safety limit prevents an unexpectedly large directory tree from consuming unbounded resources.",
                 ),
             ),
         ),
