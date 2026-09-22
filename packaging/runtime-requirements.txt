@@ -5,4 +5,4 @@ crcmod==1.7
 idna==3.19
 pyserial==3.5
 requests==2.34.2
-urllib3==2.7.0
+urllib3==2.8.0
