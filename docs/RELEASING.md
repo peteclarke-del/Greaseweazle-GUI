@@ -28,16 +28,19 @@ Only the repository maintainer publishes a release.
 
 ## Build locally
 
-On Ubuntu 24.04 with Python 3.12:
+On Ubuntu 26.04 with Python 3.14, or Ubuntu 24.04 with Python 3.12. The
+package is named for the build system's release; `build-deb.sh` refuses a
+Python that does not match it. Set `PACKAGE_DISTRO` only when building in a
+matching container or runner (examples below use Ubuntu 26.04):
 
 ```sh
 python3 -m pip install build
 python3 -m build --wheel --outdir dist
 ./packaging/build-deb.sh dist
-dpkg-deb --info dist/Greaseweazle-GUI_0.4.0_ubuntu24.04_amd64.deb
-dpkg-deb --contents dist/Greaseweazle-GUI_0.4.0_ubuntu24.04_amd64.deb
+dpkg-deb --info dist/Greaseweazle-GUI_0.4.0_ubuntu26.04_amd64.deb
+dpkg-deb --contents dist/Greaseweazle-GUI_0.4.0_ubuntu26.04_amd64.deb
 cd dist
-sha256sum Greaseweazle-GUI_0.4.0_ubuntu24.04_amd64.deb \
+sha256sum Greaseweazle-GUI_0.4.0_ubuntu26.04_amd64.deb \
   greaseweazle_gui-0.4.0-py3-none-any.whl > SHA256SUMS
 ```
 
@@ -57,7 +60,7 @@ git push origin v0.4.0
 ```
 
 The release workflow verifies the version, runs the tests, builds the wheel and
-`.deb`, installs the package on Ubuntu 24.04, exercises the bundled `gw`, creates
+`.deb` for Ubuntu 24.04 and Ubuntu 26.04, installs each on its own release, exercises the bundled `gw`, creates
 `SHA256SUMS`, stores a workflow artifact, and publishes the files in a GitHub
 Release. A failed validation or installation prevents publication.
 

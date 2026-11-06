@@ -6,6 +6,7 @@ import functools
 import hashlib
 import http.server
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -57,8 +58,16 @@ def release(
     }
 
 
-def packaging_shell(script: str, *arguments: str) -> str:
-    """Run ``script`` in bash after sourcing packaging/package-target.sh."""
+def packaging_shell(
+    script: str, *arguments: str, distro: str | None = "ubuntu24.04"
+) -> str:
+    """Run ``script`` in bash after sourcing packaging/package-target.sh.
+
+    ``distro`` sets PACKAGE_DISTRO; None leaves the build system's own release.
+    """
+    env = {k: v for k, v in os.environ.items() if k != "PACKAGE_DISTRO"}
+    if distro is not None:
+        env["PACKAGE_DISTRO"] = distro
     return subprocess.run(
         [
             "bash",
@@ -72,6 +81,7 @@ def packaging_shell(script: str, *arguments: str) -> str:
         check=True,
         capture_output=True,
         text=True,
+        env=env,
     ).stdout
 
 
@@ -169,6 +179,34 @@ class TargetTests(unittest.TestCase):
                 self.assertEqual(
                     built, f"Greaseweazle-GUI_1.2.3_ubuntu24.04_{arch}.deb"
                 )
+
+    def test_ubuntu_26_04_gets_its_own_package(self) -> None:
+        packaging_shell(
+            'write_package_target "$1" amd64', str(self.path), distro="ubuntu26.04"
+        )
+        target = installed_target(self.path)
+        assert target is not None
+        self.assertEqual(
+            target.package_name("1.2.3"), "Greaseweazle-GUI_1.2.3_ubuntu26.04_amd64.deb"
+        )
+        self.assertEqual(target.system, "Ubuntu 26.04 amd64")
+
+    def test_each_release_is_built_with_its_own_python(self) -> None:
+        self.assertEqual(packaging_shell("supported_python ubuntu24.04"), "3.12\n")
+        self.assertEqual(packaging_shell("supported_python ubuntu26.04"), "3.14\n")
+        self.assertEqual(
+            packaging_shell("supported_python ubuntu22.04 || echo none"), "none\n"
+        )
+
+    def test_the_build_system_release_is_the_default(self) -> None:
+        values = {}
+        for line in Path("/etc/os-release").read_text(encoding="utf-8").splitlines():
+            key, _, value = line.partition("=")
+            values[key] = value.strip('"')
+        expected = values.get("ID", "") + values.get("VERSION_ID", "")
+        self.assertEqual(
+            packaging_shell('printf %s "$package_distro"', distro=None), expected
+        )
 
     def test_the_source_tree_and_a_broken_record_have_no_system(self) -> None:
         self.assertIsNone(installed_target(self.path))

@@ -2,14 +2,18 @@
 
 ## Supported release package
 
-The v0.4.0 native package targets 64-bit Ubuntu 24.04 and Linux Mint 22. It
-contains the application, screenshots and help content, Greaseweazle Host Tools
-1.23, and the official Greaseweazle udev rules. The distribution supplies
-Python 3.12, GTK 4, libadwaita, and PyGObject.
+Native packages are published for 64-bit Ubuntu 26.04, and for Ubuntu 24.04
+and Linux Mint 22. Each contains the application, screenshots and help content,
+Greaseweazle Host Tools 1.23, and the official Greaseweazle udev rules. The
+distribution supplies Python (3.14 on Ubuntu 26.04, 3.12 on Ubuntu 24.04),
+GTK 4, libadwaita, and PyGObject. Install the package named for your release;
+the Ubuntu 24.04 package does not install on Ubuntu 26.04.
 
 1. Open the required version under GitHub Releases.
-2. Download `Greaseweazle-GUI_0.4.0_ubuntu24.04_amd64.deb` and `SHA256SUMS`
-   into the same folder.
+2. Download the package for your release and `SHA256SUMS` into the same
+   folder: `Greaseweazle-GUI_<version>_ubuntu26.04_amd64.deb` for Ubuntu 26.04,
+   or `Greaseweazle-GUI_<version>_ubuntu24.04_amd64.deb` for Ubuntu 24.04 and
+   Linux Mint 22.
 3. Verify the download:
 
    ```sh
@@ -19,7 +23,7 @@ Python 3.12, GTK 4, libadwaita, and PyGObject.
 4. Install the package and its distribution dependencies:
 
    ```sh
-   sudo apt install ./Greaseweazle-GUI_0.4.0_ubuntu24.04_amd64.deb
+   sudo apt install ./Greaseweazle-GUI_<version>_ubuntu26.04_amd64.deb
    ```
 
 5. Unplug and reconnect Greaseweazle. The package reloads the udev rules, but a

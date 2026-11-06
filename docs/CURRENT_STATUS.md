@@ -30,7 +30,7 @@ This document describes the functionality in version 0.4.0.
 - RPM, USB bandwidth, and confirmed cleaning-disk operations
 - Session diagnostics and optional JSON capture reports
 - Illustrated in-app user and technical guide
-- Native Ubuntu 24.04 and Linux Mint 22 amd64 release package, plus a universal
+- Native Ubuntu 26.04, Ubuntu 24.04 and Linux Mint 22 amd64 release packages, plus a universal
   Python wheel for developers
 - Check for Application Updates in the About window, which compares the running
   version with the latest GitHub release, downloads the package built for the
