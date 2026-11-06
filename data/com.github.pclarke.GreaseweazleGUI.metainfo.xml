@@ -20,6 +20,14 @@
     </p>
   </description>
   <releases>
+    <release version="0.4.1" date="2026-11-06">
+      <description>
+        <ul>
+          <li>Publish a separate package for Ubuntu 26.04, built for its Python 3.14, alongside the Ubuntu 24.04 and Linux Mint 22 package.</li>
+          <li>Update the bundled bitarray, certifi, charset-normalizer and idna libraries.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-09-22">
       <description>
         <ul>

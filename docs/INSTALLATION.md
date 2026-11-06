@@ -70,7 +70,7 @@ device rule. It does not delete disk images or capture reports in user folders.
 
 ## Source and developer installation
 
-The `greaseweazle_gui-0.4.0-py3-none-any.whl` wheel attached to this release is
+The `greaseweazle_gui-0.4.1-py3-none-any.whl` wheel attached to this release is
 for development and integration use. It does not configure desktop metadata,
 GTK dependencies, the Greaseweazle host tool, or hardware access. Users of
 other Linux distributions can currently run from the source tree after

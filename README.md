@@ -232,13 +232,13 @@ manager.
 Remove it with `sudo apt remove greaseweazlegui`. User disk images, capture
 reports, and application data are not removed.
 
-The `greaseweazle_gui-0.4.0-py3-none-any.whl` wheel is also attached for
+The `greaseweazle_gui-0.4.1-py3-none-any.whl` wheel is also attached for
 developers. It does not install GTK, libadwaita, the Greaseweazle host tools,
 desktop metadata, or device rules, so normal desktop users should install the
 `.deb` package.
 
 Maintainers create a release by updating the version in `pyproject.toml`,
-merging the release commit, and pushing a matching tag such as `v0.4.0`. The
+merging the release commit, and pushing a matching tag such as `v0.4.1`. The
 release workflow tests the exact tag, builds and installs a package on Ubuntu
 24.04 and on Ubuntu 26.04, generates SHA-256 checksums, and publishes all files to GitHub Releases.
 
