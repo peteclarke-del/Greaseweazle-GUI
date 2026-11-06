@@ -16,10 +16,15 @@ greaseweazle_sha256="$(tr -d '[:space:]' < "${project_dir}/packaging/greaseweazl
 python_version="$(${python_command} -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 architecture="$(dpkg --print-architecture)"
 
-if [[ "${python_version}" != "3.12" ]]; then
-    echo "The Ubuntu 24.04 package must be built with Python 3.12, not ${python_version}." >&2
+if ! required_python="$(supported_python "${package_distro}")"; then
+    echo "No package is made for ${package_distro}; set PACKAGE_DISTRO to ubuntu24.04 or ubuntu26.04." >&2
     exit 1
 fi
+if [[ "${python_version}" != "${required_python}" ]]; then
+    echo "The ${package_distro} package must be built with Python ${required_python}, not ${python_version}." >&2
+    exit 1
+fi
+python_next="${python_version%.*}.$(( ${python_version#*.} + 1 ))"
 if [[ "${package_version}" == *-* ]]; then
     echo "The project version must not contain a Debian revision separator: ${package_version}" >&2
     exit 1
@@ -102,7 +107,7 @@ Priority: optional
 Architecture: ${architecture}
 Installed-Size: ${installed_size}
 Maintainer: Pete Clarke <peteclarke-del@users.noreply.github.com>
-Depends: python3 (>= 3.12), python3 (<< 3.13), python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1
+Depends: python3 (>= ${python_version}), python3 (<< ${python_next}), python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1
 Homepage: https://github.com/peteclarke-del/Greaseweazle-GUI
 Description: Native Linux interface for Greaseweazle disk operations
  Greaseweazle-GUI reads, writes, creates, inspects, and browses floppy disk

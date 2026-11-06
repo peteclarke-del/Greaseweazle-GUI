@@ -61,28 +61,35 @@ jobs:
           desktop-file-validate data/com.github.pclarke.GreaseweazleGUI.desktop
           appstreamcli validate --no-net data/com.github.pclarke.GreaseweazleGUI.metainfo.xml
 
-  publish:
-    name: Build and publish installers
+  package:
+    name: Build installer for ${{ matrix.distro }}
     needs: test
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
-    permissions:
-      contents: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Each Ubuntu release gets its own package, built with that
+          # release's Python because the bundled modules are compiled.
+          - distro: ubuntu24.04
+            runner: ubuntu-24.04
+            python: "3.12"
+          - distro: ubuntu26.04
+            runner: ubuntu-26.04
+            python: "3.14"
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
           cache: pip
 
-      - name: Install build tools
-        run: python -m pip install build
-
-      - name: Build wheel and Ubuntu installer
-        run: |
-          python -m build --wheel --outdir dist
-          ./packaging/build-deb.sh dist
+      - name: Build Ubuntu installer
+        env:
+          PACKAGE_DISTRO: ${{ matrix.distro }}
+        run: ./packaging/build-deb.sh dist
 
       - name: Inspect installer
         run: |
@@ -102,10 +109,10 @@ jobs:
           sudo apt-get install -y ./dist/*.deb
           test -x /usr/bin/greaseweazle-gui
           /usr/lib/greaseweazlegui/bin/gw info --help
-          PYTHONPATH=/usr/lib/greaseweazlegui python3 -c "import greaseweazle_gui, greaseweazle"
+          PYTHONPATH=/usr/lib/greaseweazlegui /usr/bin/python3 -c "import greaseweazle_gui, greaseweazle, bitarray"
           # Check for Application Updates takes the file this package says it
           # was built as from a newer release, so the record must name it.
-          PYTHONPATH=/usr/lib/greaseweazlegui python3 -c "
+          PYTHONPATH=/usr/lib/greaseweazlegui /usr/bin/python3 -c "
           import sys
           from greaseweazle_gui import __version__, app_update
           target = app_update.installed_target()
@@ -115,8 +122,44 @@ jobs:
           print(f'The package records {target.system}: {name}')
           " "$(basename dist/*.deb)"
 
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-${{ matrix.distro }}
+          path: dist/*.deb
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build wheel
+        run: |
+          python -m pip install build
+          python -m build --wheel --outdir dist
+
+      - name: Collect installers
+        uses: actions/download-artifact@v8
+        with:
+          pattern: installer-*
+          path: dist
+          merge-multiple: true
+
       - name: Create checksums
-        run: cd dist && sha256sum *.deb *.whl > SHA256SUMS
+        run: |
+          test "$(ls dist/*.deb | wc -l)" -eq 2
+          cd dist && sha256sum *.deb *.whl > SHA256SUMS
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7

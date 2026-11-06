@@ -212,18 +212,19 @@ host tools according to the upstream Greaseweazle documentation.
 
 ## Install a release
 
-GitHub Releases provide a native `.deb` installer for 64-bit Ubuntu 24.04 and
-Linux Mint 22. The installer includes Greaseweazle-GUI, the illustrated guide,
+GitHub Releases provide native `.deb` installers for 64-bit Ubuntu 26.04, and
+for Ubuntu 24.04 and Linux Mint 22. The installer includes Greaseweazle-GUI, the illustrated guide,
 Greaseweazle Host Tools 1.23, and the official Linux device-access rules. GTK,
 libadwaita, and Python are installed or updated through the distribution package
 manager.
 
-1. Download `Greaseweazle-GUI_0.4.0_ubuntu24.04_amd64.deb` and `SHA256SUMS`
-   from the matching GitHub Release.
+1. Download the package for your release (`..._ubuntu26.04_amd64.deb` or
+   `..._ubuntu24.04_amd64.deb`) and `SHA256SUMS` from the GitHub Release.
 2. From the download folder, run
    `sha256sum --check --ignore-missing SHA256SUMS`.
 3. Install with
-   `sudo apt install ./Greaseweazle-GUI_0.4.0_ubuntu24.04_amd64.deb`.
+   `sudo apt install ./Greaseweazle-GUI_<version>_ubuntu26.04_amd64.deb`
+   (or the `ubuntu24.04` file).
 4. Unplug and reconnect the Greaseweazle so the new device rule takes effect.
 5. Open **Greaseweazle-GUI** from the GNOME application grid, or run
    `greaseweazle-gui` from a terminal.
@@ -238,11 +239,12 @@ desktop metadata, or device rules, so normal desktop users should install the
 
 Maintainers create a release by updating the version in `pyproject.toml`,
 merging the release commit, and pushing a matching tag such as `v0.4.0`. The
-release workflow tests the exact tag, builds and installs the package on Ubuntu
-24.04, generates SHA-256 checksums, and publishes all files to GitHub Releases.
+release workflow tests the exact tag, builds and installs a package on Ubuntu
+24.04 and on Ubuntu 26.04, generates SHA-256 checksums, and publishes all files to GitHub Releases.
 
-To build the installer locally on Ubuntu 24.04, run
-`./packaging/build-deb.sh dist`. The Greaseweazle host-tool version is pinned in
+To build the installer locally on Ubuntu 24.04 (Python 3.12) or Ubuntu 26.04
+(Python 3.14), run `./packaging/build-deb.sh dist`; the package is named for
+the release it is built on. The Greaseweazle host-tool version is pinned in
 `packaging/greaseweazle-version.txt` for reproducible release review.
 
 ## Update to a newer release

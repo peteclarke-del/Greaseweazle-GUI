@@ -14,8 +14,27 @@
 # the application reads what they write.
 
 # The distribution release the package is built for, as it appears in the
-# file name. Linux Mint 22 is based on Ubuntu 24.04 and uses the same package.
-package_distro=ubuntu24.04
+# file name. It is the release of the build system unless PACKAGE_DISTRO names
+# one. Each release gets its own package because the bundled dependencies
+# include compiled modules for that release's Python. Linux Mint 22 is based
+# on Ubuntu 24.04 and uses the same package.
+if [[ -n "${PACKAGE_DISTRO:-}" ]]; then
+    package_distro="${PACKAGE_DISTRO}"
+else
+    package_distro="$(. /etc/os-release && printf '%s%s' "${ID}" "${VERSION_ID}")"
+fi
+
+# supported_python DISTRO
+#
+# Prints the system Python version the package for DISTRO must be built
+# with, or fails for a release no package is made for.
+supported_python() {
+    case "$1" in
+        ubuntu24.04) echo 3.12 ;;
+        ubuntu26.04) echo 3.14 ;;
+        *) return 1 ;;
+    esac
+}
 
 # package_file_name VERSION ARCH
 #

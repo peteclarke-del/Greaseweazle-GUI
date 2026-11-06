@@ -49,15 +49,19 @@ jobs:
           appstreamcli validate --no-net data/com.github.pclarke.GreaseweazleGUI.metainfo.xml
 
   interface:
-    name: Interface tests
-    runs-on: ubuntu-24.04
+    name: Interface tests on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-26.04]
     steps:
       - uses: actions/checkout@v7
 
       # The interface tests need PyGObject, GTK 4 and libadwaita, which come
-      # from the distribution rather than pip, so this job uses Ubuntu's own
-      # Python 3.12 and the libadwaita the package is installed with.
+      # from the distribution rather than pip, so this job uses each Ubuntu
+      # release's own Python and the libadwaita the package is installed with.
       - name: Install GTK and the display server
         run: |
           sudo apt-get update
@@ -73,3 +77,41 @@ jobs:
         run: >-
           dbus-run-session -- xvfb-run --auto-servernum
           /usr/bin/python3 -m unittest discover -s tests -v
+
+  package:
+    name: Installer on ${{ matrix.distro }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: ubuntu24.04
+            runner: ubuntu-24.04
+            python: "3.12"
+          - distro: ubuntu26.04
+            runner: ubuntu-26.04
+            python: "3.14"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Build installer
+        env:
+          PACKAGE_DISTRO: ${{ matrix.distro }}
+        run: ./packaging/build-deb.sh dist
+
+      - name: Install, run and remove the package
+        run: |
+          dpkg-deb --field dist/*.deb Depends
+          sudo apt-get update
+          sudo apt-get install -y ./dist/*.deb
+          test -x /usr/bin/greaseweazle-gui
+          /usr/lib/greaseweazlegui/bin/gw info --help
+          PYTHONPATH=/usr/lib/greaseweazlegui /usr/bin/python3 -c "import greaseweazle_gui, greaseweazle, bitarray"
+          sudo apt-get remove -y greaseweazlegui
+          test ! -e /usr/bin/greaseweazle-gui
