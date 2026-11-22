@@ -14,7 +14,14 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
-from .filesystems import DiskContents, FilesystemError, ImageEntry, materialize_entries
+from .filesystem_writer import ImageWriter, create_writer, writable_support
+from .filesystems import (
+    DiskContents,
+    FilesystemError,
+    ImageEntry,
+    materialize_entries,
+    open_image,
+)
 from .local_pane import LocalFilePane
 from .track_health import TrackCondition, TrackHealthReport
 
@@ -29,6 +36,10 @@ class DiskBrowser(Gtk.Box):
         on_done: Callable[[], None] | None = None,
         health_report: TrackHealthReport | None = None,
         on_retry_damaged: Callable[[], None] | None = None,
+        image_path: Path | None = None,
+        on_write: Callable[[], None] | None = None,
+        on_live_write: Callable[[bytes, bytes, Callable[[bool, str], None]], None]
+        | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.contents = contents
@@ -43,6 +54,10 @@ class DiskBrowser(Gtk.Box):
         self._file_operation_busy = False
         self._dual_pane = True
         self._disk_writable = False
+        self._image_path = image_path
+        self._on_write = on_write
+        self._on_live_write = on_live_write
+        self._write_support = writable_support(image_path)
         self._sort_key = "name"
         self._sort_reverse = False
         self._show_hidden = False
@@ -74,13 +89,32 @@ class DiskBrowser(Gtk.Box):
         self._path_label = Gtk.Label(xalign=0, hexpand=True, ellipsize=3)
         self._path_label.add_css_class("heading")
         disk_header.append(self._path_label)
-        read_only = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        read_only.set_tooltip_text("The source image is never modified")
-        read_only.append(Gtk.Image.new_from_icon_name("changes-prevent-symbolic"))
-        read_only_label = Gtk.Label(label="Read only")
-        read_only_label.add_css_class("dim-label")
-        read_only.append(read_only_label)
-        disk_header.append(read_only)
+        self._rw_label = Gtk.Label(label="Read only")
+        self._rw_label.add_css_class("dim-label")
+        disk_header.append(self._rw_label)
+        self._rw_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
+        if self._write_support:
+            self._rw_switch.set_tooltip_text(
+                f"Enable editing of this {self._write_support} image. "
+                "Changes are saved to the image; the original is kept as a .bak."
+            )
+            self._rw_switch.connect("notify::active", self._on_rw_toggled)
+        else:
+            self._rw_switch.set_sensitive(False)
+            self._rw_switch.set_tooltip_text(
+                "Editing is not yet supported for this filesystem"
+            )
+        disk_header.append(self._rw_switch)
+        self._live_label = Gtk.Label(label="Write to disc as I edit")
+        self._live_label.add_css_class("dim-label")
+        self._live_switch = Gtk.Switch(valign=Gtk.Align.CENTER)
+        self._live_switch.set_tooltip_text(
+            "Each change is written straight to the disc in the drive. "
+            "Only the affected tracks are rewritten."
+        )
+        for widget in (self._live_label, self._live_switch):
+            widget.set_visible(False)
+            disk_header.append(widget)
 
         self._list = Gtk.ListBox(
             selection_mode=Gtk.SelectionMode.MULTIPLE,
@@ -302,6 +336,14 @@ class DiskBrowser(Gtk.Box):
             done = Gtk.Button(label="Done")
             done.set_action_name("manager.done")
             toolbar.append(done)
+        self._write_button = Gtk.Button(label="Write to Disk…")
+        self._write_button.add_css_class("suggested-action")
+        self._write_button.set_tooltip_text(
+            "Write the edited image back to a physical disk"
+        )
+        self._write_button.set_visible(False)
+        self._write_button.connect("clicked", lambda _b: self._on_write())
+        toolbar.append(self._write_button)
         if self._health_report is not None:
             health = Gtk.Button(label="Disk Health")
             health.set_icon_name("emblem-ok-symbolic")
@@ -350,7 +392,11 @@ class DiskBrowser(Gtk.Box):
         available = not self._file_operation_busy
         self._actions["cut"].set_enabled(available and local_active and local_selected)
         self._actions["trash"].set_enabled(
-            available and local_active and local_selected
+            available
+            and (
+                (local_active and local_selected)
+                or (not local_active and self._disk_writable and disk_selected)
+            )
         )
         self._actions["rename"].set_enabled(
             available and local_active and len(self._local.selected_paths()) == 1
@@ -360,13 +406,15 @@ class DiskBrowser(Gtk.Box):
         )
         self._actions["paste"].set_enabled(
             available
-            and local_active
+            and (local_active or self._disk_writable)
             and (
                 bool(self._clipboard_paths)
                 or self.get_clipboard().get_formats().contain_gtype(Gdk.FileList)
             )
         )
-        self._actions["new-folder"].set_enabled(available and local_active)
+        self._actions["new-folder"].set_enabled(
+            available and (local_active or self._disk_writable)
+        )
         self._actions["done"].set_enabled(self._on_done is not None)
         self._copy_to_local_button.set_sensitive(available and disk_selected)
         self._copy_to_disk_button.set_sensitive(
@@ -403,6 +451,10 @@ class DiskBrowser(Gtk.Box):
         self._local.status.set_text(f"Cut {len(paths)} item(s) — choose Paste to move")
 
     def _action_paste(self, _action: Gio.SimpleAction, _parameter: object) -> None:
+        if self._active_pane == "disk" and self._disk_writable:
+            if self._clipboard_paths:
+                self._write_paths_to_disk(list(self._clipboard_paths))
+            return
         if self._active_pane != "local" or self._file_operation_busy:
             return
         if not self._clipboard_paths:
@@ -568,6 +620,9 @@ class DiskBrowser(Gtk.Box):
             self._local.status.set_text(f"Could not open {path.name}: {error.message}")
 
     def _action_trash(self, _action: Gio.SimpleAction, _parameter: object) -> None:
+        if self._active_pane == "disk" and self._disk_writable:
+            self._delete_from_disk()
+            return
         paths = self._local.selected_paths()
         if not paths or self._file_operation_busy:
             return
@@ -595,6 +650,15 @@ class DiskBrowser(Gtk.Box):
         threading.Thread(target=worker, name="file-manager-trash", daemon=True).start()
 
     def _action_new_folder(self, _action: Gio.SimpleAction, _parameter: object) -> None:
+        if self._active_pane == "disk" and self._disk_writable:
+            self._request_name(
+                "Create New Folder on Disk",
+                "NEWDIR",
+                lambda name: self._edit_image(
+                    lambda w, d: w.make_directory(d, name), f"Created {name}"
+                ),
+            )
+            return
         if self._active_pane != "local":
             return
         self._request_name("Create New Folder", "New Folder", self._create_folder)
@@ -821,6 +885,122 @@ class DiskBrowser(Gtk.Box):
         if not self._disk_writable:
             self._local.status.set_text("The disk image is read-only")
             return
+        self._write_paths_to_disk(self._local.selected_paths())
+
+    # -- disk editing -------------------------------------------------------
+    def _current_disk_path(self) -> list[str]:
+        return [name for name, _entries in self._directory_stack if name]
+
+    def enable_editing_for_documentation(self) -> None:
+        """Switch editing on so help screenshots show the read/write controls."""
+        if self._write_support:
+            self._rw_switch.set_active(True)
+
+    def _on_rw_toggled(self, switch: Gtk.Switch, _param: object) -> None:
+        self._disk_writable = switch.get_active()
+        if self._on_live_write is not None:
+            self._live_label.set_visible(self._disk_writable)
+            self._live_switch.set_visible(self._disk_writable)
+            if not self._disk_writable:
+                self._live_switch.set_active(False)
+        self._rw_label.set_text("Read/write" if self._disk_writable else "Read only")
+        self._status.set_text(
+            "Editing enabled: changes are saved to the disk image"
+            if self._disk_writable
+            else "Editing disabled"
+        )
+        self._update_action_state()
+
+    def _edit_image(
+        self, operation: Callable[[ImageWriter, list[str]], None], message: str
+    ) -> bool:
+        if not self._disk_writable or self._image_path is None:
+            return False
+        try:
+            before = self._image_path.read_bytes()
+            writer = create_writer(before, self._image_path.suffix)
+            operation(writer, self._current_disk_path())
+            backup = self._image_path.with_name(self._image_path.name + ".bak")
+            if not backup.exists():
+                shutil.copy2(self._image_path, backup)
+            self._image_path.write_bytes(writer.to_bytes())
+            self._reload_from_image()
+        except (FilesystemError, OSError) as error:
+            self._status.set_text(f"Could not edit the disk: {error}")
+            return False
+        if self._on_live_write is not None and self._live_switch.get_active():
+            self._file_operation_busy = True
+            self._update_action_state()
+            self._status.set_text(f"{message} — writing to the disc…")
+
+            def finished(ok: bool, detail: str) -> bool:
+                self._file_operation_busy = False
+                if ok:
+                    self._status.set_text(f"{message} — {detail}")
+                else:
+                    self._live_switch.set_active(False)
+                    self._status.set_text(
+                        f"{detail}. The image was changed but the disc may not "
+                        "match; live writing is switched off."
+                    )
+                    if self._on_write is not None:
+                        self._write_button.set_visible(True)
+                self._update_action_state()
+                return False
+
+            self._on_live_write(before, writer.to_bytes(), finished)
+            return True
+        self._status.set_text(
+            f"{message} — use Write to Disk to save to the physical disk"
+        )
+        if self._on_write is not None:
+            self._write_button.set_visible(True)
+        return True
+
+    def _reload_from_image(self) -> None:
+        assert self._image_path is not None
+        contents = open_image(self._image_path)
+        self.contents = DiskContents(
+            self.contents.volume_label, contents.entries, self.contents.format_label
+        )
+        stack: list[tuple[str, tuple[ImageEntry, ...]]] = [("", self.contents.entries)]
+        for name, _old in self._directory_stack[1:]:
+            match = next((e for e in stack[-1][1] if e.is_directory and e.name == name), None)
+            if match is None:
+                break
+            stack.append((name, match.children))
+        self._directory_stack = stack
+        self._show_current_directory()
+
+    def _write_paths_to_disk(self, paths: Sequence[Path]) -> None:
+        if not paths:
+            return
+
+        def add(writer: ImageWriter, base: list[str]) -> None:
+            def walk(path: Path, directory: list[str]) -> None:
+                if path.is_dir():
+                    writer.make_directory(directory, path.name)
+                    inner = [*directory, path.name.upper()]
+                    for child in sorted(path.iterdir()):
+                        walk(child, inner)
+                else:
+                    writer.add_file(directory, path.name, path.read_bytes())
+
+            for path in paths:
+                walk(path, base)
+
+        self._edit_image(add, f"Copied {len(paths)} item(s) to the disk image")
+
+    def _delete_from_disk(self) -> None:
+        names = [entry.name for entry in self._selected_entries()]
+        if not names:
+            return
+
+        def remove(writer: ImageWriter, base: list[str]) -> None:
+            for name in names:
+                writer.delete(base, name)
+
+        self._edit_image(remove, f"Deleted {len(names)} item(s) from the disk image")
 
     def _set_clipboard(self, paths: Sequence[Path], *, cut: bool) -> None:
         self._clipboard_paths = list(paths)

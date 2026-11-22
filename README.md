@@ -28,7 +28,7 @@ The current application:
   protected, then captures cylinders 0–82 on both heads as lossless SCP;
 - browses Amiga OFS/FFS, Atari TOS and compatible PC FAT12, Acorn DFS/ADFS,
   Commodore 1541 DOS, Color Disk BASIC, and OS-9 RBF directories through
-  bounded read-only filesystem plugins;
+  bounded filesystem plugins that can also edit the image (see below);
 - copies files and folders to GNOME Files using drag-and-drop or Copy/Paste;
 - provides a toggleable Directory Opus-style dual-pane browser with the disk on
   the left and the local filesystem on the right;
@@ -76,9 +76,12 @@ The current application:
    360/400/440/720/800/880 KB subtype automatically.
    Select Normal, Difficult Media, or Archival capture according to the disk's
    condition and preservation needs.
-3. Automatic detection first reads only cylinder zero. Standard disks are then
-   read directly as the correct image type; unusual disks fall back to a full
-   lossless raw-flux capture.
+3. Automatic detection first reads only cylinder zero and tests every format
+   the installed Greaseweazle tools support, trying formats with a verifiable
+   signature (Atari ST, PC FAT, AmigaDOS, Acorn ADFS) first so common disks
+   are identified in seconds. Standard disks are then read directly as the
+   correct image type; unusual disks fall back to a full lossless raw-flux
+   capture.
 4. For extraction, choose the native sector container or HxC HFE for a
    recognised format, then choose where the image should be saved. Unusual or
    protected media remains a raw `.scp` capture.
@@ -88,6 +91,20 @@ The current application:
    to browse them.
 6. Select one or more items and either drag them into GNOME Files, or
    right-click, choose **Copy**, and paste them into a folder.
+
+### Editing disks in the browser
+
+The **Read only** label above the disk pane is a switch. Turn it on to copy
+files and folders onto the image, create folders, and delete items. Editing
+is supported for FAT12, AmigaDOS OFS/FFS, Acorn DFS and ADFS S/M/L,
+Commodore 1541, Color Disk BASIC, and OS-9 RBF images (AmigaDOS directory-cache
+and long-name variants stay read-only). Changes go into the image file, and
+the first edit keeps a `.bak` copy of the original.
+
+Edits change only the image until you write them out. Use **Write to Disk…**
+(shown after the first edit) to write the whole edited image, or, for a disk
+just read from the drive, switch on **Write to disc as I edit** so each change
+rewrites only the affected tracks on the physical disk straight away.
 
 Only copied or dragged files are materialized in a temporary cache, which is
 removed when the application closes. Images created with **Extract disk to
@@ -278,7 +295,7 @@ The simulation is never enabled by default.
 
 When no hardware or host tools are available, choose **Use images offline**.
 Existing AmigaDOS, FAT12, Acorn DFS/ADFS, Commodore 1541, Color Disk BASIC,
-and OS-9 images can still be opened and browsed. Physical read, extract, and
+and OS-9 images can still be opened, browsed, and edited. Physical read, extract, and
 write controls remain disabled until device detection succeeds.
 
 Additional technical documentation:

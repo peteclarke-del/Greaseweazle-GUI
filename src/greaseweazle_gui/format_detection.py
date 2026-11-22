@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -119,9 +121,12 @@ def probe_format(
 
     scored_candidates: list[tuple[float, int, DiskFormat, str]] = []
     diagnostics: list[str] = []
-    for index, disk_format in enumerate(candidates, start=1):
+
+    def probe_one(
+        index: int, disk_format: DiskFormat, generic: bool = False
+    ) -> tuple[float, int, DiskFormat, str] | str | None:
         if controller is not None and controller.cancelled:
-            return ProbeResult(None, 0, "Format detection was cancelled.")
+            return None
         output_path = work_directory / f"initial-probe-{index}{disk_format.suffix}"
         try:
             completed = _run_conversion(
@@ -139,8 +144,7 @@ def probe_format(
                 controller,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
-            diagnostics.append(f"{disk_format.label}: {error}")
-            continue
+            return f"{disk_format.label}: {error}"
         output = "\n".join(
             part for part in (completed.stdout, completed.stderr) if part
         ).strip()
@@ -148,12 +152,9 @@ def probe_format(
         expected_probe = disk_format.heads * disk_format.sectors_per_track
         ratio = min(decoded / expected_probe, 1.0) if expected_probe else 0.0
         if completed.returncode != 0 or decoded == 0 or not output_path.is_file():
-            diagnostics.append(
-                f"{disk_format.label}: no usable sectors on cylinder zero"
-            )
-            continue
+            return f"{disk_format.label}: no usable sectors on cylinder zero"
 
-        if disk_format.gw_format.startswith("atarist."):
+        if not generic and disk_format.gw_format.startswith(("atarist.", "ibm.")):
             geometry = _atari_boot_geometry(output_path)
             expected = (
                 disk_format.cylinders,
@@ -161,22 +162,54 @@ def probe_format(
                 disk_format.sectors_per_track,
             )
             if geometry != expected:
-                diagnostics.append(
-                    f"{disk_format.label}: boot geometry was {geometry or 'not valid FAT'}"
-                )
-                continue
-            confidence = ratio
-        else:
+                return f"{disk_format.label}: boot geometry was {geometry or 'not valid FAT'}"
+        elif not generic and disk_format.gw_format.startswith("acorn.adfs."):
+            try:
+                head = output_path.read_bytes()[: 2 * 256 + 5]
+            except OSError:
+                head = b""
+            if head[0x201:0x205] != b"Hugo":
+                return f"{disk_format.label}: ADFS root directory not found"
+            declared = int.from_bytes(head[0xFC:0xFF], "little")
+            if declared != disk_format.track_count * disk_format.sectors_per_track:
+                return f"{disk_format.label}: free-space map declares {declared} sectors"
+        elif not generic and disk_format.gw_format.startswith("amiga."):
             try:
                 signature = output_path.read_bytes()[:4]
             except OSError:
                 signature = b""
             if len(signature) != 4 or signature[:3] != b"DOS" or signature[3] > 7:
-                diagnostics.append(f"{disk_format.label}: AmigaDOS signature not found")
-                continue
-            confidence = ratio
+                return f"{disk_format.label}: AmigaDOS signature not found"
+        elif not disk_format.gw_format or disk_format.gw_format.startswith("raw."):
+            return None
+        elif ratio < 0.9:
+            return f"{disk_format.label}: only {ratio:.0%} of cylinder zero decoded"
+        return (ratio, decoded, disk_format, output)
 
-        scored_candidates.append((confidence, decoded, disk_format, output))
+    signed = ("atarist.", "amiga.", "acorn.adfs.", "ibm.")
+    indexed = list(enumerate(candidates, start=1))
+    # Formats with a verifiable signature are tried first; a match there means
+    # the (much slower) generic decoders never need to run.
+    phases = [
+        [(i, f, False) for i, f in indexed if f.gw_format.startswith(signed)],
+        [
+            (i, f, True)
+            for i, f in indexed
+            if not f.gw_format.startswith(signed[:3])
+        ],
+    ]
+    workers = min(8, os.cpu_count() or 4)
+    for batch in phases:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for outcome in pool.map(lambda item: probe_one(*item), batch):
+                if isinstance(outcome, str):
+                    diagnostics.append(outcome)
+                elif outcome is not None:
+                    scored_candidates.append(outcome)
+        if any(item[0] >= 0.9 for item in scored_candidates):
+            break
+    if controller is not None and controller.cancelled:
+        return ProbeResult(None, 0, "Format detection was cancelled.")
 
     if not scored_candidates:
         return ProbeResult(

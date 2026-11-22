@@ -66,7 +66,7 @@ def filesystem_readers() -> tuple[FilesystemReader, ...]:
         ),
         FilesystemReader(
             "Acorn ADFS",
-            (".adm", ".ads", ".adl"),
+            (".ads", ".adm", ".adl"),
             lambda data, suffix: _AcornAdfsOldMapImage(data, suffix).open(),
         ),
         FilesystemReader(
@@ -214,8 +214,8 @@ class _AcornDfsImage:
             name = leaf if directory == "$" else f"{directory}.{leaf}"
             name = _unique_name(name, used_names)
             meta = catalogue_meta[offset : offset + 8]
-            length = meta[4] | (meta[5] << 8) | ((meta[7] & 0x30) << 12)
-            start_sector = meta[6] | ((meta[7] & 0x03) << 8)
+            length = meta[4] | (meta[5] << 8) | ((meta[6] & 0x30) << 12)
+            start_sector = meta[7] | ((meta[6] & 0x03) << 8)
             start = start_sector * self.SECTOR_SIZE
             end = start + length
             if start_sector < 2 or end > declared_sectors * self.SECTOR_SIZE:
@@ -242,7 +242,7 @@ class _AcornAdfsOldMapImage:
 
     SECTOR_SIZE = 256
     DIRECTORY_SIZE = 5 * SECTOR_SIZE
-    IMAGE_SIZES = {".adm": 160 * 1024, ".ads": 320 * 1024, ".adl": 640 * 1024}
+    IMAGE_SIZES = {".ads": 160 * 1024, ".adm": 320 * 1024, ".adl": 640 * 1024}
 
     def __init__(self, data: bytes, suffix: str) -> None:
         expected = self.IMAGE_SIZES[suffix]
@@ -493,9 +493,11 @@ class _Os9RbfImage:
             entry = directory[offset : offset + 32]
             if not entry[0]:
                 continue
-            name = self._terminated_name(entry[:29])
-            if name in {".", ".."}:
+            if bytes(b & 0x7F for b in entry[:2]).rstrip(b"\0") in {b".", b".."} and (
+                entry[0] & 0x80 or entry[1] & 0x80 or entry[1] == 0
+            ):
                 continue
+            name = self._terminated_name(entry[:29])
             name = _unique_name(name, used_names)
             child_sector = int.from_bytes(entry[29:32], "big")
             child_descriptor, child_size, child_is_directory = self._descriptor(
@@ -575,7 +577,7 @@ class _CommodoreD64Image:
                     self._petscii_name(directory[offset + 3 : offset + 19]),
                     used_names,
                 )
-                size_blocks = directory[offset + 30] | (directory[offset + 31] << 8)
+                size_blocks = directory[offset + 28] | (directory[offset + 29] << 8)
                 if size_blocks > sum(self.SECTORS_PER_TRACK):
                     raise FilesystemError(f"{name} has an impossible block count.")
 

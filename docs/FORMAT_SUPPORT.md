@@ -37,10 +37,19 @@ unpacked, one at a time, and each is deleted once it has been inspected.
 | AmigaDOS OFS and FFS | `.adf`, `.hfe`, `.scp`, `.a2r` | Directories and files are read lazily. DD and HD images are accepted. Track containers are decoded to a temporary ADF. |
 | FAT12 | `.st`, `.img`, `.ima`, `.hfe`, `.scp`, `.a2r` | Atari TOS, PC, MS-DOS, and other compatible FAT12 images can be browsed. Long names and nested directories are bounded. Track containers are decoded to a temporary sector image. |
 | Acorn DFS | `.ssd`, `.dsd`, `.hfe`, `.scp`, `.a2r` | Single-sided and interleaved double-sided catalogues can be browsed, including from decoded track containers. |
-| Acorn ADFS S, M, and L | `.adm`, `.ads`, `.adl`, `.hfe`, `.scp`, `.a2r` | Old-map directories, nested folders, and contiguous files are browsed with bounds and loop checks. |
+| Acorn ADFS S, M, and L | `.ads` (S, 160 KB), `.adm` (M, 320 KB), `.adl` (L, 640 KB), `.hfe`, `.scp`, `.a2r` | Old-map directories, nested folders, and contiguous files are browsed with bounds and loop checks. |
 | Commodore 1541 DOS | `.d64`, `.hfe`, `.scp`, `.a2r` | Standard 35-track images, with or without error bytes, can be browsed, including from decoded track containers. |
 | Tandy Color Disk BASIC | `.img`, `.hfe`, `.scp`, `.a2r` | 35- and 40-track DECB directories and granule chains are validated and browsed. |
 | OS-9 RBF | `.img`, `.hfe`, `.scp`, `.a2r` | Tandy Color Computer and Dragon Data OS-9 files, extents, and nested directories are browsed by content. |
+
+## Editing
+
+Every reader above has a matching editor in `filesystem_writer.py`, enabled by
+the read/write switch in the browser: add files, delete, and create folders
+(where the filesystem has them). AmigaDOS directory-cache and long-name
+variants (DOS4–7) are read-only. Edits go to the image; the first edit keeps a
+`.bak` copy. Edited images can be written back in full, or, for a disk read
+from the drive, track by track as each edit is made.
 
 These readers reject allocation loops, recursive directory chains, invalid
 sector pointers, overlapping files, impossible sizes, and truncated images.
@@ -82,11 +91,16 @@ Greaseweazle host tools; HxCFE itself is not bundled or required.
 
 ## Automatic identification
 
-Automatic detection currently performs a quick cylinder-zero check for the
-standard Atari ST and Amiga layouts that have strong boot-sector signatures.
-If that check is inconclusive, the disk is captured once as raw flux and tested
-without another physical read. A user who knows another machine family should
-select its exact Greaseweazle format from the manufacturer menu.
+Automatic detection reads cylinder zero and tests every format the installed
+Greaseweazle tools list. Formats with a verifiable signature are tried first:
+Atari ST and PC FAT boot sectors, the AmigaDOS `DOS` marker, and the Acorn ADFS
+root-directory signature plus the free-space map's declared size (which tells
+ADFS S, M, and L apart). A match stops the search; otherwise the remaining
+formats are tested, requiring at least 90% of cylinder zero to decode.
+If nothing is conclusive, the disk is captured once as raw flux and tested
+without another physical read. Related formats with identical cylinder-zero
+layouts can still be confused, so the full read is checked against the
+filesystem afterwards.
 
 Filesystem coverage is deliberately expanded one reader at a time. Planned
 families include Apple DOS, ProDOS, CP/M, DragonDOS, and other documented layouts
