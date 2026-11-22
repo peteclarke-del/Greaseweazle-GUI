@@ -176,7 +176,7 @@ class FilesystemTests(unittest.TestCase):
 
     def test_opens_acorn_adfs_old_map_image(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            image = Path(temporary) / "work.ads"
+            image = Path(temporary) / "work.adm"
             image.write_bytes(make_adfs_image())
 
             contents = open_image(image)

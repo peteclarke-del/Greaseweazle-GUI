@@ -1,6 +1,6 @@
 # Current implementation status
 
-This document describes the functionality in version 0.4.1.
+This document describes the functionality in version 0.5.0.
 
 ## Complete workflows
 
@@ -9,7 +9,7 @@ This document describes the functionality in version 0.4.1.
   release check is unavailable or rate limited
 - Offline image work when physical hardware is unavailable
 - Drive A or B selection and reconnection monitoring
-- Read and Browse with format choice or standard Amiga and Atari detection
+- Read and Browse with format choice or automatic detection of every format Greaseweazle supports (signature-checked formats first)
 - Extract Disk to Image with native sector, HxC HFE, or preservation-grade SCP
   containers
 - Live track, cylinder, head, sector, retry, and verification progress
@@ -17,7 +17,9 @@ This document describes the functionality in version 0.4.1.
 - Write Image to Disk with content inspection and explicit format confirmation
 - Blank media creation for creatable Greaseweazle formats
 - Ready-to-use Atari FAT12 and AmigaDOS OFS blank filesystems
-- Read-only dual-pane browser with multiple selection, drag and drop, clipboard,
+- Dual-pane browser, read-only by default with a read/write switch that edits
+  FAT12, AmigaDOS, DFS, ADFS, Commodore 1541, Color Disk BASIC, and OS-9
+  images, writes the edited image to disk, or writes each change live; multiple selection, drag and drop, clipboard,
   conflict handling, local file operations, and GNOME Files integration
 - Image inspection, conversion, comparison, SHA-256, and local cataloguing
 - Zipped disk images accepted by Open, Inspect, Compare, and Write, with a

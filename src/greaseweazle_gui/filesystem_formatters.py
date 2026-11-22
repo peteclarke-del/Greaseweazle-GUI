@@ -136,17 +136,16 @@ def _format_amigados(image_path: Path, volume_label: str) -> None:
     _boot_checksum(boot)
     data[:1024] = boot
 
+    # Bit n of the bitmap (LSB first within each big-endian long) describes
+    # block n + 2; a set bit means the block is free.
     bitmap = bytearray(512)
-    for block_number in range(block_count):
-        word_offset = 4 + (block_number // 32) * 4
-        bit = 31 - (block_number % 32)
+    for block_number in range(2, block_count):
+        if block_number in (root_number, bitmap_number):
+            continue
+        index = block_number - 2
+        word_offset = 4 + (index // 32) * 4
         value = struct.unpack_from(">I", bitmap, word_offset)[0]
-        struct.pack_into(">I", bitmap, word_offset, value | (1 << bit))
-    for used in (0, 1, root_number, bitmap_number):
-        word_offset = 4 + (used // 32) * 4
-        bit = 31 - (used % 32)
-        value = struct.unpack_from(">I", bitmap, word_offset)[0]
-        struct.pack_into(">I", bitmap, word_offset, value & ~(1 << bit))
+        struct.pack_into(">I", bitmap, word_offset, value | (1 << (index % 32)))
     _amiga_checksum(bitmap, 0)
     data[bitmap_number * 512 : (bitmap_number + 1) * 512] = bitmap
 

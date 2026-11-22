@@ -17,7 +17,7 @@ def dfs_side(title: str, filename: str, payload: bytes) -> bytes:
     image[15] = ord("$")
     image[256 + 12] = len(payload) & 0xFF
     image[256 + 13] = len(payload) >> 8
-    image[256 + 14] = 2
+    image[256 + 15] = 2  # start sector low byte (mixed byte is +14)
     image[512 : 512 + len(payload)] = payload
     return bytes(image)
 

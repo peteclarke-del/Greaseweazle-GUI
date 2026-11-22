@@ -40,7 +40,7 @@ HELP_TOPICS = (
             HelpSection(
                 "Preservation rules",
                 (
-                    "Reading and inspection never modify the source disk or image. The image browser is read-only. Writing a physical disk is destructive and always requires format confirmation.",
+                    "Reading and inspection never modify the source disk or image. The image browser starts read-only; editing is an explicit switch described under Disk and File Browser. Writing a physical disk is destructive and always requires format confirmation.",
                     "For original, protected, unknown, or irreplaceable media, use Extract Disk to Image with the Protected Software profile. This retains raw flux in SCP rather than forcing the disk into a sector format.",
                 ),
             ),
@@ -84,7 +84,7 @@ HELP_TOPICS = (
                 "Choose how to identify the disk",
                 (
                     "Choose Read Disk on the start page or Disk, Read and Browse Disk. If the exact format is known, choose it from the manufacturer-grouped list. Atari ST also provides a family-level choice that detects 360, 400, 440, 720, 800, or 880 KB geometry.",
-                    "Automatic detection first reads cylinder zero and tests plausible decoders. A recognised standard disk is then read directly into its normal sector image. If the probe is inconclusive, the application captures raw flux and tests supported formats without another physical read pass.",
+                    "Automatic detection first reads cylinder zero and tests every format the installed Greaseweazle tools support. Formats with a verifiable signature (Atari ST, PC FAT, AmigaDOS, and Acorn ADFS S, M, or L) are tried first and normally identify the disk in a few seconds; the remaining formats are tried only when none of those matches. A recognised disk is then read directly into its normal sector image. If the probe is inconclusive, the application captures raw flux and tests supported formats without another physical read pass.",
                 ),
                 (
                     "Insert the disk and set its write-protect tab when possible.",
@@ -141,8 +141,8 @@ HELP_TOPICS = (
             HelpSection(
                 "Two-pane operation",
                 (
-                    "The left pane is the disk image and is always read-only. The right pane is the local filesystem. Both panes show their path at the top and support multiple selection, sorting, hidden-file control, keyboard navigation, context menus, and a traditional menu and toolbar.",
-                    "The greater-than button copies selected disk items to the current local folder. The less-than button is disabled while the image is read-only. Source captures are never edited in place.",
+                    "The left pane is the disk image and starts read-only. The right pane is the local filesystem. Both panes show their path at the top and support multiple selection, sorting, hidden-file control, keyboard navigation, context menus, and a traditional menu and toolbar.",
+                    "The greater-than button copies selected disk items to the current local folder. The less-than button copies selected local items onto the disk and is available only while editing is switched on.",
                 ),
                 (
                     "Double-click a folder or press Enter to open it.",
@@ -150,6 +150,20 @@ HELP_TOPICS = (
                     "Select one or more disk items and press the greater-than button, drag them to GNOME Files, or use Copy and Paste.",
                     "For naming conflicts choose Skip Existing, Keep Both, or Replace.",
                     "Open View, Disk Health to inspect track quality when physical read data is available.",
+                ),
+            ),
+            HelpSection(
+                "Editing a disk image",
+                (
+                    "The Read only label above the disk pane is a switch. Turn it on to make the disk pane read/write. Copy and Paste, the less-than button, New Folder, and Trash then act on the disk pane when it is the active pane. Editing works for FAT12 (Atari ST, PC), AmigaDOS OFS and FFS, Acorn DFS and ADFS S, M, and L, Commodore 1541 DOS, Tandy Color Disk BASIC, and OS-9 RBF images. Directory-cache and long-name AmigaDOS variants stay read-only, and the switch is greyed out with an explanation.",
+                    "Changes are saved straight into the image file, and the first edit keeps a copy of the original beside it with a .bak suffix. FAT12 long names are stored as 8.3 names, and Acorn, Commodore, and OS-9 names are shortened to what their filesystems allow. Free space is checked before each copy.",
+                    "Editing changes only the image. After the first edit a Write to Disk button appears in the toolbar; it asks for confirmation and then writes the whole edited image to the disk in the drive, verifying each track.",
+                    "For a disk that was just read from the drive, a second switch, Write to disc as I edit, appears. With it on, every change is written to the physical disk immediately and only the tracks the change touched are rewritten. Keep the same disk in the drive; if a track write fails the switch turns itself off and Write to Disk remains available to write the whole image.",
+                ),
+                (
+                    "Turn on the read/write switch above the disk pane.",
+                    "Select local files and press the less-than button, or use Paste, New Folder, or Trash on the disk pane.",
+                    "Use Write to Disk, or switch on Write to disc as I edit before editing, to put the changes on the physical disk.",
                 ),
             ),
             HelpSection(

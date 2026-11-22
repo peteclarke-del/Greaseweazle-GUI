@@ -49,7 +49,7 @@ Complete when a capture is reproducible and its provenance can be audited later.
 ## 4. Filesystem coverage
 
 - [Complete] Move filesystem readers behind a small bounded plugin interface.
-- [In progress] Read-only browsing covers Atari TOS and compatible PC FAT12,
+- [In progress] Browsing and editing cover Atari TOS and compatible PC FAT12,
   AmigaDOS OFS/FFS, Acorn DFS and ADFS S/M/L, Commodore 1541 DOS, Tandy Color
   Disk BASIC, and Tandy/Dragon OS-9 RBF. HFE, SCP, and A2R containers are
   decoded automatically when they contain one of these filesystems. Apple DOS,
@@ -72,8 +72,9 @@ reader is bounded against corrupt or hostile image metadata.
   shortcuts, drag-and-drop, and accessible labels as one focused milestone.
 - [Complete] Add Skip, Keep Both, and Replace conflict choices, partial-result
   reporting, multiple selection, and a clear read-only source state.
-- Add optional image editing as a transactional workflow with undo and an explicit
-  **Save image** step; never modify the source capture in place.
+- [Complete] Optional image editing behind a read/write switch for every
+  browsable filesystem, with a `.bak` copy of the original, **Write to Disk**,
+  and per-track live writing. Undo is not yet implemented.
 
 Complete when normal GNOME file-manager behaviour is consistent in both panes and
 all mutations are transactional and recoverable.

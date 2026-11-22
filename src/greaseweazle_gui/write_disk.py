@@ -66,6 +66,7 @@ def write_disk(
     progress: Callable[[WriteProgress], None] | None = None,
     controller: OperationController | None = None,
     drive: str | None = None,
+    tracks: str | None = None,
 ) -> WriteResult:
     executable = shutil.which("gw")
     if executable is None:
@@ -73,6 +74,8 @@ def write_disk(
     command = [executable, "write"]
     if drive is not None:
         command.extend(("--drive", drive))
+    if tracks:
+        command.extend(("--tracks", tracks))
     if disk_format.gw_format and not disk_format.direct_write:
         command.extend(("--format", disk_format.gw_format))
     command.append(str(image_path))

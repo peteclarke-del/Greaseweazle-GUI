@@ -41,11 +41,11 @@ from .disk_formats import (
     RAW_FLUX_FORMAT,
     DiskFormat,
 )
-from .filesystem_formatters import filesystem_support_name
+from .filesystem_formatters import filesystem_support_name, initialise_filesystem
+from .filesystem_writer import create_writer
 from .filesystems import (
     DiskContents,
     FilesystemError,
-    ImageEntry,
     browsable_suffixes,
     open_image,
 )
@@ -76,6 +76,7 @@ from .image_sources import (
 from .operation import OperationController
 from .read_disk import ReadProgress, ReadResult, read_disk
 from .retry_tracks import RetryTracksResult, retry_damaged_tracks
+from .track_diff import changed_tracks, track_specs
 from .track_health import (
     TrackCondition,
     TrackHealth,
@@ -129,6 +130,7 @@ class MainWindow(Adw.ApplicationWindow):
         toolbar_view.add_top_bar(self._header_bar)
         self.set_content(toolbar_view)
 
+        self._workspace_return: str | None = None
         self._stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
         toolbar_view.set_content(self._stack)
         self._stack.add_named(self._build_checking_page(), "checking")
@@ -139,9 +141,20 @@ class MainWindow(Adw.ApplicationWindow):
         GLib.timeout_add_seconds(5, self._poll_device)
 
     def _go_back(self, _button: Gtk.Button) -> None:
-        if self._stack.get_visible_child_name() == "browser":
+        current = self._stack.get_visible_child_name()
+        if current == "browser":
             self._leave_browser()
+        elif (
+            current == "workspace"
+            and self._workspace_return == "browser"
+            and self._stack.get_child_by_name("browser") is not None
+        ):
+            # Help, inspection, and similar pages opened from the browser
+            # return to it with its state intact.
+            self._workspace_return = None
+            self._stack.set_visible_child_name("browser")
         else:
+            self._workspace_return = None
             self._show_dashboard()
 
     def _visible_page_changed(self, _stack: Gtk.Stack, _property: object) -> None:
@@ -445,6 +458,10 @@ class MainWindow(Adw.ApplicationWindow):
             page.append(action_bar)
         content.set_vexpand(True)
         page.append(content)
+        if self._stack.get_visible_child_name() == "browser":
+            self._workspace_return = "browser"
+        elif self._stack.get_visible_child_name() != "workspace":
+            self._workspace_return = None
         existing = self._stack.get_child_by_name("workspace")
         if existing is not None:
             self._stack.remove(existing)
@@ -1558,6 +1575,64 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.present()
         return GLib.SOURCE_REMOVE
 
+    def _live_write_tracks(
+        self,
+        disk_format: DiskFormat,
+        old: bytes,
+        new: bytes,
+        image_path: Path,
+        done: Callable[[bool, str], None],
+    ) -> None:
+        """Write only the tracks changed by an edit to the disk in the drive."""
+
+        def worker() -> None:
+            try:
+                tracks = changed_tracks(disk_format.gw_format, old, new)
+                specs = track_specs(tracks)
+                for spec in specs:
+                    result = write_disk(
+                        image_path,
+                        disk_format,
+                        timeout=120,
+                        drive=self._drive,
+                        tracks=spec,
+                    )
+                    if not result.succeeded:
+                        GLib.idle_add(
+                            done,
+                            False,
+                            f"Writing {spec} failed: {result.summary}",
+                        )
+                        return
+                message = f"Wrote {len(tracks)} track(s) to the disk"
+                GLib.idle_add(done, True, message)
+            except Exception as error:
+                GLib.idle_add(done, False, f"Could not write to the disk: {error}")
+
+        threading.Thread(target=worker, name="live-write", daemon=True).start()
+
+    def _confirm_browser_write(self, image_path: Path, disk_format: DiskFormat) -> None:
+        dialog = Adw.MessageDialog.new(
+            self,
+            "Write edited image to disk?",
+            f"This overwrites the disk in the drive with the edited "
+            f"{disk_format.label} image. Existing contents will be lost.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("write", "Write disk")
+        dialog.set_response_appearance("write", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect(
+            "response",
+            lambda _d, response: (
+                self._start_write(image_path, disk_format)
+                if response == "write"
+                else None
+            ),
+        )
+        dialog.present()
+
     def _start_write(self, image_path: Path, disk_format: DiskFormat) -> None:
         can_verify = bool(disk_format.gw_format) and not disk_format.direct_write
         self._reading_page.set_title(f"Writing {disk_format.label}…")
@@ -1667,8 +1742,15 @@ class MainWindow(Adw.ApplicationWindow):
         _button: Gtk.Button | None,
         *,
         save_image: bool,
-        candidates: tuple[DiskFormat, ...] = DISK_FORMATS,
+        candidates: tuple[DiskFormat, ...] | None = None,
     ) -> None:
+        if candidates is None:
+            curated = {item.gw_format for item in DISK_FORMATS}
+            candidates = DISK_FORMATS + tuple(
+                item
+                for item in supported_formats()
+                if item.gw_format not in curated and item.sectors_per_track
+            )
         temporary = tempfile.TemporaryDirectory(prefix="greaseweazle-auto-")
         probe_image = Path(temporary.name) / "probe.scp"
         self._reading_page.set_title("Checking disk format…")
@@ -2572,6 +2654,17 @@ class MainWindow(Adw.ApplicationWindow):
                 cache_path,
                 on_done=self._leave_browser,
                 health_report=health_report,
+                image_path=image_path,
+                on_write=lambda: self._confirm_browser_write(image_path, disk_format),
+                on_live_write=(
+                    (
+                        lambda old, new, done: self._live_write_tracks(
+                            disk_format, old, new, image_path, done
+                        )
+                    )
+                    if cache_path.name == "export-cache" and disk_format.gw_format
+                    else None
+                ),
                 on_retry_damaged=(
                     lambda: (
                         self._start_track_retry(
@@ -3126,35 +3219,41 @@ class MainWindow(Adw.ApplicationWindow):
         elif state == "disk-browser":
             temporary = tempfile.TemporaryDirectory(prefix="gw-help-browser-")
             self._temporary_directories.append(temporary)
-            contents = DiskContents(
-                "GAMES",
-                (
-                    ImageEntry(
-                        "AUTO",
-                        True,
-                        children=(
-                            ImageEntry("START.PRG", False, 48216, _reader=lambda: b""),
-                        ),
-                    ),
-                    ImageEntry("README.TXT", False, 1842, _reader=lambda: b""),
-                    ImageEntry("NINJA.PRG", False, 241664, _reader=lambda: b""),
-                    ImageEntry("SCORES.DAT", False, 512, _reader=lambda: b""),
-                ),
-                "Atari ST FAT12",
+            sample_image = Path(temporary.name) / "games.st"
+            sample_format = next(
+                item for item in DISK_FORMATS if item.gw_format == "atarist.720"
             )
+            sample_image.write_bytes(
+                bytes(
+                    sample_format.cylinders
+                    * sample_format.heads
+                    * sample_format.sectors_per_track
+                    * 512
+                )
+            )
+            initialise_filesystem(sample_image, sample_format, "GAMES")
+            sample = create_writer(sample_image.read_bytes(), ".st")
+            sample.make_directory([], "AUTO")
+            sample.add_file(["AUTO"], "START.PRG", bytes(48216))
+            sample.add_file([], "README.TXT", bytes(1842))
+            sample.add_file([], "NINJA.PRG", bytes(241664))
+            sample.add_file([], "SCORES.DAT", bytes(512))
+            sample_image.write_bytes(sample.to_bytes())
+            contents = open_image(sample_image)
             self._finish_read(
                 ReadResult(True, "Image opened successfully."),
                 temporary,
                 (
                     contents,
-                    Path(temporary.name) / "files",
-                    Path(temporary.name) / "games.st",
-                    DISK_FORMATS[3],
+                    Path(temporary.name) / "export-cache",
+                    sample_image,
+                    sample_format,
                     (),
                 ),
             )
             browser = self._stack.get_child_by_name("browser")
             if isinstance(browser, DiskBrowser):
+                browser.enable_editing_for_documentation()
                 local_folder = Path(temporary.name) / "Local Files"
                 local_folder.mkdir()
                 for folder_name in ("Archive", "Disk Images", "Documents"):

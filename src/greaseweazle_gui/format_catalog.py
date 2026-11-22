@@ -120,9 +120,9 @@ def _image_suffix(format_name: str) -> str:
     if format_name == "acorn.dfs.ds" or format_name == "acorn.dfs.ds80":
         return ".dsd"
     if format_name == "acorn.adfs.160":
-        return ".adm"
-    if format_name == "acorn.adfs.320":
         return ".ads"
+    if format_name == "acorn.adfs.320":
+        return ".adm"
     if format_name == "acorn.adfs.640":
         return ".adl"
     commodore_suffixes = {
