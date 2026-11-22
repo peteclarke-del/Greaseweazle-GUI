@@ -965,7 +965,9 @@ class DiskBrowser(Gtk.Box):
         )
         stack: list[tuple[str, tuple[ImageEntry, ...]]] = [("", self.contents.entries)]
         for name, _old in self._directory_stack[1:]:
-            match = next((e for e in stack[-1][1] if e.is_directory and e.name == name), None)
+            match = next(
+                (e for e in stack[-1][1] if e.is_directory and e.name == name), None
+            )
             if match is None:
                 break
             stack.append((name, match.children))

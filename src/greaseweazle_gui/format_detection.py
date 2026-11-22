@@ -172,7 +172,9 @@ def probe_format(
                 return f"{disk_format.label}: ADFS root directory not found"
             declared = int.from_bytes(head[0xFC:0xFF], "little")
             if declared != disk_format.track_count * disk_format.sectors_per_track:
-                return f"{disk_format.label}: free-space map declares {declared} sectors"
+                return (
+                    f"{disk_format.label}: free-space map declares {declared} sectors"
+                )
         elif not generic and disk_format.gw_format.startswith("amiga."):
             try:
                 signature = output_path.read_bytes()[:4]
@@ -192,11 +194,7 @@ def probe_format(
     # the (much slower) generic decoders never need to run.
     phases = [
         [(i, f, False) for i, f in indexed if f.gw_format.startswith(signed)],
-        [
-            (i, f, True)
-            for i, f in indexed
-            if not f.gw_format.startswith(signed[:3])
-        ],
+        [(i, f, True) for i, f in indexed if not f.gw_format.startswith(signed[:3])],
     ]
     workers = min(8, os.cpu_count() or 4)
     for batch in phases:

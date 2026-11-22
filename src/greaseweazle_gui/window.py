@@ -46,7 +46,6 @@ from .filesystem_writer import create_writer
 from .filesystems import (
     DiskContents,
     FilesystemError,
-    ImageEntry,
     browsable_suffixes,
     open_image,
 )
@@ -77,6 +76,7 @@ from .image_sources import (
 from .operation import OperationController
 from .read_disk import ReadProgress, ReadResult, read_disk
 from .retry_tracks import RetryTracksResult, retry_damaged_tracks
+from .track_diff import changed_tracks, track_specs
 from .track_health import (
     TrackCondition,
     TrackHealth,
@@ -84,7 +84,6 @@ from .track_health import (
     build_track_health,
     build_write_health,
 )
-from .track_diff import changed_tracks, track_specs
 from .write_disk import WriteProgress, WriteResult, write_disk
 
 
@@ -1590,7 +1589,7 @@ class MainWindow(Adw.ApplicationWindow):
             try:
                 tracks = changed_tracks(disk_format.gw_format, old, new)
                 specs = track_specs(tracks)
-                for index, spec in enumerate(specs, start=1):
+                for spec in specs:
                     result = write_disk(
                         image_path,
                         disk_format,

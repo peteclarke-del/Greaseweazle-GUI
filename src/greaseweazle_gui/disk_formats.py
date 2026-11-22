@@ -64,13 +64,31 @@ DISK_FORMATS = (
         11,
     ),
     DiskFormat(
-        "Acorn ADFS S 160 KB", "ADFS 40 cylinders, single-sided", "acorn.adfs.160", ".ads", 40, 1, 16
+        "Acorn ADFS S 160 KB",
+        "ADFS 40 cylinders, single-sided",
+        "acorn.adfs.160",
+        ".ads",
+        40,
+        1,
+        16,
     ),
     DiskFormat(
-        "Acorn ADFS M 320 KB", "ADFS 80 cylinders, single-sided", "acorn.adfs.320", ".adm", 80, 1, 16
+        "Acorn ADFS M 320 KB",
+        "ADFS 80 cylinders, single-sided",
+        "acorn.adfs.320",
+        ".adm",
+        80,
+        1,
+        16,
     ),
     DiskFormat(
-        "Acorn ADFS L 640 KB", "ADFS 80 cylinders, double-sided", "acorn.adfs.640", ".adl", 80, 2, 16
+        "Acorn ADFS L 640 KB",
+        "ADFS 80 cylinders, double-sided",
+        "acorn.adfs.640",
+        ".adl",
+        80,
+        2,
+        16,
     ),
 )
 

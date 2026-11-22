@@ -11,7 +11,7 @@ from pathlib import Path
 from .filesystems import FilesystemError
 
 _FAT12_SUFFIXES = {".st", ".img", ".ima"}
-_INVALID = re.compile(r'[^A-Z0-9!#$%&\'()\-@^_`{}~]')
+_INVALID = re.compile(r"[^A-Z0-9!#$%&\'()\-@^_`{}~]")
 
 
 class ImageWriter:
@@ -59,7 +59,7 @@ def create_writer(data: bytes, suffix: str) -> ImageWriter:
     for factory in factories:
         try:
             return factory(bytearray(data))
-        except FilesystemError as caught:
+        except FilesystemError as caught:  # noqa: PERF203
             error = caught
     raise error
 
@@ -88,7 +88,10 @@ class Fat12Writer(ImageWriter):
         reserved = struct.unpack_from("<H", data, 14)[0]
         self.fats = data[16]
         self.root_entries = struct.unpack_from("<H", data, 17)[0]
-        total = struct.unpack_from("<H", data, 19)[0] or struct.unpack_from("<I", data, 32)[0]
+        total = (
+            struct.unpack_from("<H", data, 19)[0]
+            or struct.unpack_from("<I", data, 32)[0]
+        )
         self.spf = struct.unpack_from("<H", data, 22)[0]
         if (
             self.bps not in {128, 256, 512, 1024, 2048, 4096}
@@ -100,11 +103,15 @@ class Fat12Writer(ImageWriter):
             or not total
             or total * self.bps > len(data)
         ):
-            raise FilesystemError("The image does not contain a valid FAT12 filesystem.")
+            raise FilesystemError(
+                "The image does not contain a valid FAT12 filesystem."
+            )
         self.fat_offset = reserved * self.bps
         self.root_offset = (reserved + self.fats * self.spf) * self.bps
         self.root_size = self.root_entries * 32
-        self.data_offset = self.root_offset + (self.root_size + self.bps - 1) // self.bps * self.bps
+        self.data_offset = (
+            self.root_offset + (self.root_size + self.bps - 1) // self.bps * self.bps
+        )
         self.cluster_size = self.bps * self.spc
         self.cluster_count = (total * self.bps - self.data_offset) // self.cluster_size
 
@@ -140,21 +147,22 @@ class Fat12Writer(ImageWriter):
             self._set(cluster, 0)
 
     def _allocate(self, count: int) -> list[int]:
-        free = [
-            c for c in range(2, self.cluster_count + 2) if self._get(c) == 0
-        ][:count]
+        free = [c for c in range(2, self.cluster_count + 2) if self._get(c) == 0][
+            :count
+        ]
         if len(free) < count:
             raise FilesystemError("There is not enough free space on the disk.")
-        for a, b in zip(free, free[1:]):
+        for a, b in zip(free, free[1:], strict=False):
             self._set(a, b)
         if free:
             self._set(free[-1], 0xFFF)
         return free
 
     def free_bytes(self) -> int:
-        return sum(
-            1 for c in range(2, self.cluster_count + 2) if self._get(c) == 0
-        ) * self.cluster_size
+        return (
+            sum(1 for c in range(2, self.cluster_count + 2) if self._get(c) == 0)
+            * self.cluster_size
+        )
 
     def _cluster_offset(self, cluster: int) -> int:
         return self.data_offset + (cluster - 2) * self.cluster_size
@@ -250,9 +258,7 @@ class Fat12Writer(ImageWriter):
     def _write_entry(
         self, parent: int | None, name: str, attr: int, first: int, size: int
     ) -> None:
-        taken = {
-            n.upper() for _s, _o, n in self._entries(parent)
-        }
+        taken = {n.upper() for _s, _o, n in self._entries(parent)}
         if name.upper() in taken or any(n.casefold() == name.casefold() for n in taken):
             raise FilesystemError(f"'{name}' already exists in this folder.")
         short = self._short_name(name, taken)
@@ -273,7 +279,9 @@ class Fat12Writer(ImageWriter):
         needed = -(-len(content) // self.cluster_size)
         clusters = self._allocate(needed) if needed else []
         try:
-            self._write_entry(parent, name, 0x20, clusters[0] if clusters else 0, len(content))
+            self._write_entry(
+                parent, name, 0x20, clusters[0] if clusters else 0, len(content)
+            )
         except FilesystemError:
             for c in clusters:
                 self._set(c, 0)
@@ -294,7 +302,9 @@ class Fat12Writer(ImageWriter):
         o = self._cluster_offset(cluster)
         self.data[o : o + self.cluster_size] = bytes(self.cluster_size)
         date, clock = self._stamp()
-        for index, (label, target) in enumerate(((b".", cluster), (b"..", parent or 0))):
+        for index, (label, target) in enumerate(
+            ((b".", cluster), (b"..", parent or 0))
+        ):
             e = bytearray(32)
             e[:11] = label.ljust(11)
             e[11] = 0x10
@@ -340,7 +350,10 @@ class DfsWriter(ImageWriter):
             if len(data) % (2 * self.TRACK):
                 raise FilesystemError("The double-sided DFS image is truncated.")
             tracks = [data[o : o + self.TRACK] for o in range(0, len(data), self.TRACK)]
-            self.sides = [bytearray().join(tracks[0::2]), bytearray().join(tracks[1::2])]
+            self.sides = [
+                bytearray().join(tracks[0::2]),
+                bytearray().join(tracks[1::2]),
+            ]
         else:
             self.sides = [bytearray(data)]
         super().__init__(data)
@@ -401,7 +414,9 @@ class DfsWriter(ImageWriter):
             side[o + 7] = ord(e["dir"]) | e["locked"]
             side[256 + o : 256 + o + 2] = (e["load"] & 0xFFFF).to_bytes(2, "little")
             side[256 + o + 2 : 256 + o + 4] = (e["exec"] & 0xFFFF).to_bytes(2, "little")
-            side[256 + o + 4 : 256 + o + 6] = (e["length"] & 0xFFFF).to_bytes(2, "little")
+            side[256 + o + 4 : 256 + o + 6] = (e["length"] & 0xFFFF).to_bytes(
+                2, "little"
+            )
             side[256 + o + 6] = (
                 (e["exec"] >> 16 & 3) << 6
                 | (e["length"] >> 16 & 3) << 4
@@ -414,7 +429,8 @@ class DfsWriter(ImageWriter):
 
     def _gaps(self, side: bytearray) -> list[tuple[int, int]]:
         spans = sorted(
-            (e["start"], e["start"] + -(-e["length"] // 256)) for e in self._entries(side)
+            (e["start"], e["start"] + -(-e["length"] // 256))
+            for e in self._entries(side)
         )
         gaps, cursor = [], 2
         for start, end in spans:
@@ -435,7 +451,10 @@ class DfsWriter(ImageWriter):
         side, _ = self._side(directory)
         entries = self._entries(side)
         folder, leaf = self._split(name)
-        if any(e["dir"] == folder and e["name"].casefold() == leaf.casefold() for e in entries):
+        if any(
+            e["dir"] == folder and e["name"].casefold() == leaf.casefold()
+            for e in entries
+        ):
             raise FilesystemError(f"'{name}' already exists on the disk.")
         if len(entries) >= 31:
             raise FilesystemError("The DFS catalogue is full (31 files).")
@@ -448,10 +467,19 @@ class DfsWriter(ImageWriter):
         else:
             raise FilesystemError("There is not enough free space on the disk.")
         entries.append(
-            {"name": leaf, "dir": folder, "locked": 0, "load": 0, "exec": 0,
-             "length": len(content), "start": begin}
+            {
+                "name": leaf,
+                "dir": folder,
+                "locked": 0,
+                "load": 0,
+                "exec": 0,
+                "length": len(content),
+                "start": begin,
+            }
         )
-        side[begin * 256 : begin * 256 + sectors * 256] = content.ljust(sectors * 256, b"\0")
+        side[begin * 256 : begin * 256 + sectors * 256] = content.ljust(
+            sectors * 256, b"\0"
+        )
         self._store(side, entries)
 
     def delete(self, directory: Sequence[str], name: str) -> None:
@@ -461,7 +489,8 @@ class DfsWriter(ImageWriter):
         entries = self._entries(side)
         folder, leaf = self._split(name)
         kept = [
-            e for e in entries
+            e
+            for e in entries
             if not (e["dir"] == folder and e["name"].casefold() == leaf.casefold())
         ]
         if len(kept) == len(entries):
@@ -506,7 +535,9 @@ class D64Writer(ImageWriter):
             self.data[o + 1 + sector // 8] &= ~bit & 0xFF
             self.data[o] -= 1
 
-    def _allocate(self, count: int, near_directory: bool = False) -> list[tuple[int, int]]:
+    def _allocate(
+        self, count: int, near_directory: bool = False
+    ) -> list[tuple[int, int]]:
         if near_directory:
             order = [18]
         else:
@@ -549,7 +580,11 @@ class D64Writer(ImageWriter):
     def _find(self, name: str) -> int | None:
         wanted = self._petscii(name)
         for o in self._slots():
-            if self.data[o] & 7 and bytes(self.data[o + 3 : o + 19]).rstrip(b"\xa0\0 ") == wanted.rstrip():
+            if (
+                self.data[o] & 7
+                and bytes(self.data[o + 3 : o + 19]).rstrip(b"\xa0\0 ")
+                == wanted.rstrip()
+            ):
                 return o
         return None
 
@@ -640,7 +675,11 @@ class Os9Writer(ImageWriter):
         self.data[o] = (self.data[o] | mask) if used else (self.data[o] & ~mask & 0xFF)
 
     def free_bytes(self) -> int:
-        return sum(not self._used(c) for c in range(self.clusters)) * self.cluster * self.SECTOR
+        return (
+            sum(not self._used(c) for c in range(self.clusters))
+            * self.cluster
+            * self.SECTOR
+        )
 
     def _allocate(self, sectors: int) -> list[tuple[int, int]]:
         """Return (first LSN, sector count) extents covering ``sectors``."""
@@ -708,7 +747,9 @@ class Os9Writer(ImageWriter):
         for lsn, count in extents:
             span = count * self.SECTOR
             chunk = content[position : position + span]
-            self.data[lsn * self.SECTOR : lsn * self.SECTOR + span] = chunk.ljust(span, b"\0")
+            self.data[lsn * self.SECTOR : lsn * self.SECTOR + span] = chunk.ljust(
+                span, b"\0"
+            )
             position += span
 
     def _new_fd(self, attributes: int, content: bytes) -> int:
@@ -751,7 +792,9 @@ class Os9Writer(ImageWriter):
 
     @staticmethod
     def _encode(name: str) -> bytes:
-        clean = "".join(c if c.isalnum() or c in "._-$" else "_" for c in name)[:28] or "_"
+        clean = (
+            "".join(c if c.isalnum() or c in "._-$" else "_" for c in name)[:28] or "_"
+        )
         raw = bytearray(clean.encode("ascii", "replace"))
         raw[-1] |= 0x80
         return bytes(raw).ljust(29, b"\0")
@@ -759,7 +802,11 @@ class Os9Writer(ImageWriter):
     def _entries(self, fd: int) -> list[tuple[int, str, int]]:
         listing = self._read(fd)
         return [
-            (o, self._decode(listing[o : o + 29]), int.from_bytes(listing[o + 29 : o + 32], "big"))
+            (
+                o,
+                self._decode(listing[o : o + 29]),
+                int.from_bytes(listing[o + 29 : o + 32], "big"),
+            )
             for o in range(0, len(listing) - 31, 32)
             if listing[o]
         ]
@@ -768,7 +815,10 @@ class Os9Writer(ImageWriter):
         fd = self.root
         for part in path:
             for _o, name, child in self._entries(fd):
-                if name.casefold() == part.casefold() and self.data[child * self.SECTOR] & 0x80:
+                if (
+                    name.casefold() == part.casefold()
+                    and self.data[child * self.SECTOR] & 0x80
+                ):
                     fd = child
                     break
             else:
@@ -776,12 +826,17 @@ class Os9Writer(ImageWriter):
         return fd
 
     def _put_entry(self, directory: int, name: str, child: int) -> None:
-        if any(n.casefold() == name.casefold() for _o, n, _c in self._entries(directory)
-               if n not in {".", ".."}):
+        if any(
+            n.casefold() == name.casefold()
+            for _o, n, _c in self._entries(directory)
+            if n not in {".", ".."}
+        ):
             raise FilesystemError(f"'{name}' already exists in this folder.")
         listing = bytearray(self._read(directory))
         entry = self._encode(name) + child.to_bytes(3, "big")
-        slot = next((o for o in range(0, len(listing) - 31, 32) if not listing[o]), None)
+        slot = next(
+            (o for o in range(0, len(listing) - 31, 32) if not listing[o]), None
+        )
         if slot is None:
             listing += entry
         else:
@@ -816,7 +871,9 @@ class Os9Writer(ImageWriter):
         fd = self._new_fd(0xBF, bytes(64))
         dot = bytes([0xAE]).ljust(29, b"\0")
         dotdot = bytes([0x2E, 0xAE]).ljust(29, b"\0")
-        self._rewrite(fd, dotdot + parent.to_bytes(3, "big") + dot + fd.to_bytes(3, "big"))
+        self._rewrite(
+            fd, dotdot + parent.to_bytes(3, "big") + dot + fd.to_bytes(3, "big")
+        )
         try:
             self._put_entry(parent, name, fd)
         except FilesystemError:
@@ -872,7 +929,9 @@ class DecbWriter(ImageWriter):
         stem, dot, ext = name.upper().rpartition(".")
         if not dot:
             stem, ext = ext, ""
-        return _fit_name(stem, 8).ljust(8).encode("ascii") + _fit_name(ext, 3).ljust(3).encode("ascii")
+        return _fit_name(stem, 8).ljust(8).encode("ascii") + _fit_name(ext, 3).ljust(
+            3
+        ).encode("ascii")
 
     def _find(self, name: str) -> int | None:
         wanted = self._split(name)
@@ -910,7 +969,9 @@ class DecbWriter(ImageWriter):
                 chain[index + 1] if index + 1 < count else 0xC0 + sectors
             )
         ext = self._split(name)[8:].decode().strip()
-        kind, flag = (0, 0) if ext == "BAS" else (1, 0xFF) if ext in {"TXT", "DAT"} else (2, 0)
+        kind, flag = (
+            (0, 0) if ext == "BAS" else (1, 0xFF) if ext in {"TXT", "DAT"} else (2, 0)
+        )
         entry = bytearray(32)
         entry[:11] = self._split(name)
         entry[11], entry[12], entry[13] = kind, flag, chain[0]
@@ -937,7 +998,9 @@ class DecbWriter(ImageWriter):
                 index -= 1
 
     def free_bytes(self) -> int:
-        return sum(1 for g in range(68) if self.data[self.gat + g] == 0xFF) * self.GRANULE
+        return (
+            sum(1 for g in range(68) if self.data[self.gat + g] == 0xFF) * self.GRANULE
+        )
 
 
 class AmigaWriter(ImageWriter):
@@ -991,7 +1054,9 @@ class AmigaWriter(ImageWriter):
 
     def _sum(self, block: bytearray, o: int = 20) -> None:
         self._w(block, o, 0)
-        total = sum(int.from_bytes(block[i : i + 4], "big") for i in range(0, self.BS, 4))
+        total = sum(
+            int.from_bytes(block[i : i + 4], "big") for i in range(0, self.BS, 4)
+        )
         self._w(block, o, -total)
 
     def _upper(self, ch: int) -> int:
@@ -1010,7 +1075,9 @@ class AmigaWriter(ImageWriter):
 
     def _same(self, a: str, b: str) -> bool:
         ra, rb = a.encode("latin-1", "replace"), b.encode("latin-1", "replace")
-        return len(ra) == len(rb) and all(self._upper(x) == self._upper(y) for x, y in zip(ra, rb))
+        return len(ra) == len(rb) and all(
+            self._upper(x) == self._upper(y) for x, y in zip(ra, rb, strict=True)
+        )
 
     @staticmethod
     def _name_of(block: bytes | bytearray) -> str:
@@ -1027,7 +1094,11 @@ class AmigaWriter(ImageWriter):
         page, bit = divmod(index, 127 * 32)
         if page >= len(self.bitmaps):
             raise FilesystemError("The block lies outside the bitmap.")
-        return self.bitmaps[page] * self.BS + 4 + (bit // 32) * 4, 1 << (bit % 32), self.bitmaps[page]
+        return (
+            self.bitmaps[page] * self.BS + 4 + (bit // 32) * 4,
+            1 << (bit % 32),
+            self.bitmaps[page],
+        )
 
     def _is_free(self, block: int) -> bool:
         o, mask, _p = self._bit(block)
@@ -1055,9 +1126,10 @@ class AmigaWriter(ImageWriter):
         return chosen
 
     def free_bytes(self) -> int:
-        return sum(
-            1 for b in range(2, self.blocks) if b != self.root and self._is_free(b)
-        ) * self.dsz
+        return (
+            sum(1 for b in range(2, self.blocks) if b != self.root and self._is_free(b))
+            * self.dsz
+        )
 
     # -- directories --------------------------------------------------------
     def _chain(self, directory: int) -> list[tuple[int, int]]:
@@ -1161,7 +1233,11 @@ class AmigaWriter(ImageWriter):
         count = -(-len(content) // self.dsz)
         extensions = max(0, -(-count // 72) - 1)
         blocks = self._allocate(1 + count + extensions)
-        header, data_blocks, ext_blocks = blocks[0], blocks[1 : 1 + count], blocks[1 + count :]
+        header, data_blocks, ext_blocks = (
+            blocks[0],
+            blocks[1 : 1 + count],
+            blocks[1 + count :],
+        )
         for index, number in enumerate(data_blocks):
             chunk = content[index * self.dsz : (index + 1) * self.dsz]
             if self.ffs:
@@ -1225,7 +1301,9 @@ class AmigaWriter(ImageWriter):
         kind = self._l(block, 508, True)
         if kind == 2:
             for sub, _slot in self._chain(child):
-                self.delete([*directory, self._name_of(block)], self._name_of(self._block(sub)))
+                self.delete(
+                    [*directory, self._name_of(block)], self._name_of(self._block(sub))
+                )
             freed = [child]
         elif kind == -3:
             freed = self._file_blocks(child)
@@ -1296,7 +1374,9 @@ class AdfsWriter(ImageWriter):
             self.data[0x100 + i * 3 : 0x103 + i * 3] = length.to_bytes(3, "little")
         self.data[0x1FE] = len(merged) * 3
         for base in (0, 0x100):
-            self.data[base + 0xFF] = self._checksum(self.data[base : base + 256], self._seed)
+            self.data[base + 0xFF] = self._checksum(
+                self.data[base : base + 256], self._seed
+            )
 
     def _allocate(self, sectors: int) -> int:
         spans = self._free()
@@ -1316,7 +1396,12 @@ class AdfsWriter(ImageWriter):
     # -- directories --------------------------------------------------------
     @staticmethod
     def _clean(raw: bytes) -> str:
-        return bytes(b & 0x7F for b in raw).split(b"\r", 1)[0].decode("latin-1").rstrip("\0 ")
+        return (
+            bytes(b & 0x7F for b in raw)
+            .split(b"\r", 1)[0]
+            .decode("latin-1")
+            .rstrip("\0 ")
+        )
 
     def _entries(self, sector: int) -> list[bytearray]:
         base = sector * self.SECTOR
@@ -1347,7 +1432,10 @@ class AdfsWriter(ImageWriter):
         sector = 2
         for part in path:
             for entry in self._entries(sector):
-                if entry[3] & 0x80 and self._clean(entry[:10]).casefold() == part.casefold():
+                if (
+                    entry[3] & 0x80
+                    and self._clean(entry[:10]).casefold() == part.casefold()
+                ):
                     sector = int.from_bytes(entry[22:25], "little")
                     break
             else:
@@ -1367,7 +1455,9 @@ class AdfsWriter(ImageWriter):
         entry[22:25] = start.to_bytes(3, "little")
         return entry
 
-    def _add_entry(self, directory: Sequence[str], name: str, is_dir: bool, length: int, start: int) -> None:
+    def _add_entry(
+        self, directory: Sequence[str], name: str, is_dir: bool, length: int, start: int
+    ) -> None:
         parent = self._resolve(directory)
         entries = self._entries(parent)
         leaf = _fit_name(name, 10)
@@ -1386,8 +1476,8 @@ class AdfsWriter(ImageWriter):
             raise FilesystemError("The ADFS directory is full (47 entries).")
         sectors = max(1, -(-len(content) // self.SECTOR))
         start = self._allocate(sectors)
-        self.data[start * self.SECTOR : (start + sectors) * self.SECTOR] = content.ljust(
-            sectors * self.SECTOR, b"\0"
+        self.data[start * self.SECTOR : (start + sectors) * self.SECTOR] = (
+            content.ljust(sectors * self.SECTOR, b"\0")
         )
         entries.append(self._entry(name, False, len(content), start))
         self._save_entries(parent, entries)
@@ -1422,7 +1512,9 @@ class AdfsWriter(ImageWriter):
             start = int.from_bytes(entry[22:25], "little")
             if entry[3] & 0x80:
                 for child in self._entries(start):
-                    self.delete([*directory, self._clean(entry[:10])], self._clean(child[:10]))
+                    self.delete(
+                        [*directory, self._clean(entry[:10])], self._clean(child[:10])
+                    )
                 self._release(start, 5)
             else:
                 length = int.from_bytes(entry[18:22], "little")

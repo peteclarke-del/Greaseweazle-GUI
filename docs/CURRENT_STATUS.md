@@ -1,6 +1,6 @@
 # Current implementation status
 
-This document describes the functionality in version 0.4.1.
+This document describes the functionality in version 0.5.0.
 
 ## Complete workflows
 

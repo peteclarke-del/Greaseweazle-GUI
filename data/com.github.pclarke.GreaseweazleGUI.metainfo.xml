@@ -20,6 +20,18 @@
     </p>
   </description>
   <releases>
+    <release version="0.5.0" date="2026-11-22">
+      <description>
+        <ul>
+          <li>Edit disk images in the browser behind a read/write switch: add files, delete, and create folders on FAT12, AmigaDOS, Acorn DFS and ADFS, Commodore 1541, Color Disk BASIC, and OS-9 images. The first edit keeps a .bak copy.</li>
+          <li>Write an edited image back to the disk with Write to Disk, or switch on Write to disc as I edit to rewrite only the changed tracks after each edit.</li>
+          <li>Automatic format detection now tests every format Greaseweazle supports, checking signature-verified formats first so common disks are identified in seconds. ADFS S, M, and L are told apart.</li>
+          <li>Fix the ADFS file extensions (.ads is S, .adm is M), the Acorn DFS catalogue start sector, Commodore block counts, OS-9 folder entries, and the AmigaDOS blank-disk bitmap.</li>
+          <li>The back button returns to the disk browser after opening the user guide from it.</li>
+          <li>Update the bundled bitarray library to 3.12.4.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.1" date="2026-11-06">
       <description>
         <ul>
@@ -50,8 +62,6 @@
       <description>
         <ul>
           <li>Browse Acorn ADFS S, M, and L images, including HFE containers.</li>
-          <li>Edit images in the disk browser behind a read/write switch, and write the changes to the disk afterwards or as each edit is made.</li>
-          <li>Faster automatic format detection that tests every format Greaseweazle supports.</li>
           <li>Add Tandy Color Disk BASIC and Tandy/Dragon OS-9 filesystem readers.</li>
           <li>Add an About dialog with version, licensing, support, and project information.</li>
           <li>Reject weak track-format probe matches before attempting a full decode.</li>

@@ -54,9 +54,7 @@ def track_layout(gw_format: str, image_size: int) -> list[tuple[int, int, int, i
     return [tuple(item) for item in json.loads(completed.stdout)]  # type: ignore[misc]
 
 
-def changed_tracks(
-    gw_format: str, old: bytes, new: bytes
-) -> list[tuple[int, int]]:
+def changed_tracks(gw_format: str, old: bytes, new: bytes) -> list[tuple[int, int]]:
     """Return the (cylinder, head) pairs whose image data changed."""
     if len(old) != len(new):
         raise ValueError("The image size changed unexpectedly.")

@@ -5,7 +5,7 @@ from pathlib import Path
 from greaseweazle_gui.disk_formats import DISK_FORMATS
 from greaseweazle_gui.filesystem_formatters import initialise_filesystem
 from greaseweazle_gui.filesystem_writer import Fat12Writer, writable_support
-from greaseweazle_gui.filesystems import open_image
+from greaseweazle_gui.filesystems import FilesystemError, open_image
 
 
 def names(entries):
@@ -17,7 +17,9 @@ class Fat12WriterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "blank.st"
             fmt = next(f for f in DISK_FORMATS if f.gw_format == "atarist.720")
-            image.write_bytes(bytes(fmt.cylinders * fmt.heads * fmt.sectors_per_track * 512))
+            image.write_bytes(
+                bytes(fmt.cylinders * fmt.heads * fmt.sectors_per_track * 512)
+            )
             initialise_filesystem(image, fmt)
             self.assertEqual(writable_support(image), "FAT12")
             w = Fat12Writer(bytearray(image.read_bytes()))
@@ -30,7 +32,7 @@ class Fat12WriterTests(unittest.TestCase):
             self.assertEqual(top["HELLO.TXT"].read_bytes(), b"hi there")
             inner = names(top["SUB"].children)
             self.assertEqual(next(iter(inner.values())).read_bytes(), big)
-            with self.assertRaises(Exception):
+            with self.assertRaises(FilesystemError):
                 w.add_file([], "hello.txt", b"dup")
             free = w.free_bytes()
             w.delete([], "SUB")
@@ -44,7 +46,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
-from greaseweazle_gui.filesystem_writer import D64Writer, create_writer  # noqa: E402
+from greaseweazle_gui.filesystem_writer import create_writer  # noqa: E402
 
 
 def blank_dfs(tracks=40, double=False):
@@ -89,7 +91,7 @@ class OtherWriterTests(unittest.TestCase):
         small, big = b"hello", bytes(range(256)) * 9
         w.add_file(list(prefix), "ONE", small)
         w.add_file(list(prefix), "TWO", big)
-        with self.assertRaises(Exception):
+        with self.assertRaises(FilesystemError):
             w.add_file(list(prefix), "ONE", b"x")
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / f"x{suffix}"
@@ -152,14 +154,16 @@ class AdfsTests(unittest.TestCase):
         w.add_file([], "ONE", b"hello")
         w.make_directory([], "Dir")
         w.add_file(["Dir"], "TWO", bytes(range(256)) * 9)
-        with self.assertRaises(Exception):
+        with self.assertRaises(FilesystemError):
             w.add_file([], "one", b"x")
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "x.adm"
             image.write_bytes(w.to_bytes())
             top = names(open_image(image).entries)
             self.assertEqual(top["ONE"].read_bytes(), b"hello")
-            self.assertEqual(names(top["Dir"].children)["TWO"].read_bytes(), bytes(range(256)) * 9)
+            self.assertEqual(
+                names(top["Dir"].children)["TWO"].read_bytes(), bytes(range(256)) * 9
+            )
             w.delete([], "Dir")
             w.delete([], "ONE")
             self.assertEqual(w.free_bytes(), start)
@@ -203,7 +207,9 @@ class Os9Tests(unittest.TestCase):
             image.write_bytes(w.to_bytes())
             top = names(open_image(image).entries)
             self.assertEqual(top["one"].read_bytes(), b"hello")
-            self.assertEqual(names(top["dir"].children)["two"].read_bytes(), bytes(range(256)) * 9)
+            self.assertEqual(
+                names(top["dir"].children)["two"].read_bytes(), bytes(range(256)) * 9
+            )
             self.assertEqual(top["f2"].read_bytes(), b"x" * 700)
             for n in ("one", "dir", "f0", "f1", "f2"):
                 w.delete([], n)
@@ -229,7 +235,7 @@ class AmigaTests(unittest.TestCase):
             w.make_directory([], "Dir")
             w.add_file(["Dir"], "Big File", big)
             w.add_file([], "empty", b"")
-            with self.assertRaises(Exception):
+            with self.assertRaises(FilesystemError):
                 w.add_file([], "ONE", b"x")
             image.write_bytes(w.to_bytes())
             top = names(open_image(image).entries)
